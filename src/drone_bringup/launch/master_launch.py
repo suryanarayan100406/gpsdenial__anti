@@ -6,6 +6,22 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 from webots_ros2_driver.webots_controller import WebotsController
 
+import subprocess
+
+def get_windows_ip():
+    """Dynamically find the Windows host IP from WSL."""
+    try:
+        # Check the default route first
+        result = subprocess.run(['ip', 'route'], capture_output=True, text=True)
+        for line in result.stdout.split('\n'):
+            if 'default' in line:
+                return line.split(' ')[2]
+        # Fallback to nameserver
+        result = subprocess.run(['grep', 'nameserver', '/etc/resolv.conf'], capture_output=True, text=True)
+        return result.stdout.split(' ')[1].strip()
+    except Exception:
+        return '127.0.0.1'
+
 def generate_launch_description():
     """Master launch file for GPS-Denied Drone Navigation System."""
     
@@ -22,7 +38,8 @@ def generate_launch_description():
         robot_name='mavic2pro',
         parameters=[
             {'robot_description': robot_description},
-            {'use_sim_time': True}
+            {'use_sim_time': True},
+            {'ip_address': get_windows_ip()}
         ]
     )
 
