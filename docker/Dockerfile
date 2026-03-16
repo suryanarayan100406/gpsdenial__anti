@@ -1,4 +1,4 @@
-FROM osrf/ros:humble-desktop
+FROM osrf/ros:jazzy-desktop
 
 # Install basic dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,15 +12,15 @@ RUN apt-get update && apt-get install -y \
 
 # Install specific ROS2 packages for the project
 RUN apt-get update && apt-get install -y \
-    ros-humble-webots-ros2 \
-    ros-humble-robot-localization \
-    ros-humble-slam-toolbox \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-rosbridge-suite \
-    ros-humble-tf-transformations \
-    ros-humble-xacro \
-    ros-humble-rviz2 \
+    ros-jazzy-webots-ros2 \
+    ros-jazzy-robot-localization \
+    ros-jazzy-slam-toolbox \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
+    ros-jazzy-rosbridge-suite \
+    ros-jazzy-tf-transformations \
+    ros-jazzy-xacro \
+    ros-jazzy-rviz2 \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -32,10 +32,10 @@ COPY ./src /drone_ws/src
 COPY ./worlds /drone_ws/worlds
 
 # Build the workspace
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install"
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && colcon build --symlink-install"
 
 # Setup entrypoint to source both workspaces
-RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc \
+RUN echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc \
  && echo "source /drone_ws/install/setup.bash" >> ~/.bashrc
 
 CMD ["/bin/bash", "-c", "source /drone_ws/install/setup.bash && ros2 launch src/launch/master_launch.py"]

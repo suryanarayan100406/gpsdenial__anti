@@ -92,7 +92,7 @@ private:
         double alt_error = target_altitude_ - current_altitude_;
         alt_integral_ += alt_error * 0.02;
         // Anti-windup
-        alt_integral_ = std::clamp(alt_integral_, -2.0, 2.0);
+        alt_integral_ = std::max(-2.0, std::min(alt_integral_, 2.0));
         double alt_derivative = (alt_error - prev_alt_error_) / 0.02;
         prev_alt_error_ = alt_error;
         

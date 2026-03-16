@@ -1,0 +1,1 @@
+ament_cmake_symlink_install_targets("TARGET_FILES" "/mnt/c/Users/LENOVO/OneDrive/Desktop/drone/build/control_layer/pid_controller" "/mnt/c/Users/LENOVO/OneDrive/Desktop/drone/build/control_layer/motor_mixer" "TARGETS" "pid_controller" "motor_mixer" "DESTINATION" "lib/control_layer")

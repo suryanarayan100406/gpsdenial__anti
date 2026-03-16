@@ -10,15 +10,15 @@ sudo apt install -y python3-pip python3-colcon-common-extensions python3-rosdep 
 # Install necessary ROS2 packages
 # Assuming ROS2 Humble is already installed, if not, user needs to follow official docs.
 sudo apt install -y \
-    ros-humble-webots-ros2 \
-    ros-humble-robot-localization \
-    ros-humble-slam-toolbox \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-rosbridge-suite \
-    ros-humble-tf-transformations \
-    ros-humble-xacro \
-    ros-humble-rviz2
+    ros-jazzy-webots-ros2 \
+    ros-jazzy-robot-localization \
+    ros-jazzy-slam-toolbox \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
+    ros-jazzy-rosbridge-suite \
+    ros-jazzy-tf-transformations \
+    ros-jazzy-xacro \
+    ros-jazzy-rviz2
 
 # Install Python dependencies
 pip3 install transform3d numpy pandas pylint black

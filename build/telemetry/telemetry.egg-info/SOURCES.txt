@@ -1,0 +1,12 @@
+package.xml
+setup.py
+resource/telemetry
+telemetry/__init__.py
+telemetry/dashboard_node.py
+telemetry.egg-info/PKG-INFO
+telemetry.egg-info/SOURCES.txt
+telemetry.egg-info/dependency_links.txt
+telemetry.egg-info/entry_points.txt
+telemetry.egg-info/requires.txt
+telemetry.egg-info/top_level.txt
+telemetry.egg-info/zip-safe

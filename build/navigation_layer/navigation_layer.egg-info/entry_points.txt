@@ -1,0 +1,2 @@
+[console_scripts]
+navigation_status_node = navigation_layer.navigation_status_node:main

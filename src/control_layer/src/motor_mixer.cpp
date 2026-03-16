@@ -5,6 +5,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
+#include <algorithm>
 
 using std::placeholders::_1;
 
