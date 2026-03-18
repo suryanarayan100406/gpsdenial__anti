@@ -67,6 +67,7 @@ class PathPlanner(Node):
         self.last_start_cell: Optional[GridCell] = None
         self.last_goal_cell: Optional[GridCell] = None
         self.last_start_world: Optional[Tuple[float, float]] = None
+        self.map_initialized = False
 
         self.path_pub = self.create_publisher(Path, '/planned_path', 10)
         self.replan_event_pub = self.create_publisher(Bool, '/replan_event', 10)
@@ -83,13 +84,26 @@ class PathPlanner(Node):
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         data = np.array(msg.data, dtype=np.int16).reshape((msg.info.height, msg.info.width))
+        map_changed = (
+            self.state.grid is None
+            or self.state.grid.shape != data.shape
+            or not np.array_equal(self.state.grid, data)
+        )
+
         self.state.grid = data
         self.state.resolution = msg.info.resolution
         self.state.width = msg.info.width
         self.state.height = msg.info.height
         self.state.origin_x = msg.info.origin.position.x
         self.state.origin_y = msg.info.origin.position.y
-        self.replan_requested = True
+
+        if not self.map_initialized:
+            self.replan_requested = True
+            self.map_initialized = True
+            return
+
+        if map_changed and not self.mission_completed:
+            self.replan_requested = True
 
     def _on_pose(self, msg: PoseStamped) -> None:
         self.current_pose = msg
