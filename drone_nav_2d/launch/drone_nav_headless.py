@@ -4,20 +4,30 @@ This launches all navigation nodes with RViz for visualization and rosbag for re
 """
 
 import os
+from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def generate_launch_description() -> LaunchDescription:
+def _resolve_unique_bag_output(bag_output_base: str) -> str:
+    candidate = bag_output_base
+    if os.path.exists(candidate):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        candidate = f'{bag_output_base}_{timestamp}'
+    return candidate
+
+
+def _build_actions(context):
     pkg_share = get_package_share_directory('drone_nav_2d')
     params_file = os.path.join(pkg_share, 'config', 'nav_params.yaml')
     rviz_config = os.path.join(pkg_share, 'rviz', 'drone_nav.rviz')
     urdf_path = os.path.join(pkg_share, 'urdf', 'drone.urdf')
 
-    bag_output = LaunchConfiguration('bag_output')
+    bag_output_base = LaunchConfiguration('bag_output').perform(context).strip()
+    bag_output = _resolve_unique_bag_output(bag_output_base)
 
     with open(urdf_path, 'r', encoding='utf-8') as f:
         robot_description = f.read()
@@ -118,14 +128,10 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
     )
 
-    return LaunchDescription([
-        DeclareLaunchArgument(
-            'bag_output',
-            default_value='bags/drone_nav_run',
-            description='Output directory for rosbag2 recording',
-        ),
+    return [
         LogInfo(msg=['Launching drone navigation (headless mode - no Webots simulator)']),
         LogInfo(msg=['Recording topics to rosbag2, visualizing in RViz']),
+        LogInfo(msg=[f'Rosbag output: {bag_output}']),
         map_publisher,
         planner,
         synthetic_pose,
@@ -135,4 +141,15 @@ def generate_launch_description() -> LaunchDescription:
         drone_visualizer,
         rviz,
         rosbag,
+    ]
+
+
+def generate_launch_description() -> LaunchDescription:
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'bag_output',
+            default_value='bags/drone_nav_run',
+            description='Output directory for rosbag2 recording',
+        ),
+        OpaqueFunction(function=_build_actions),
     ])

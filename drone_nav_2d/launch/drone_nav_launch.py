@@ -1,10 +1,19 @@
 import os
+from datetime import datetime
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def _resolve_unique_bag_output(bag_output_base: str) -> str:
+    candidate = bag_output_base
+    if os.path.exists(candidate):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        candidate = f'{bag_output_base}_{timestamp}'
+    return candidate
 
 
 def _build_actions(context):
@@ -17,7 +26,8 @@ def _build_actions(context):
     urdf_path = os.path.join(pkg_share, 'urdf', 'drone.urdf')
 
     world_profile = LaunchConfiguration('world_profile').perform(context).strip().lower()
-    bag_output = LaunchConfiguration('bag_output')
+    bag_output_base = LaunchConfiguration('bag_output').perform(context).strip()
+    bag_output = _resolve_unique_bag_output(bag_output_base)
 
     selected_world = world_realistic
     if world_profile == 'easy':
@@ -131,6 +141,7 @@ def _build_actions(context):
 
     actions = [
         LogInfo(msg=[f'Launching drone navigation in {world_profile} scenario']),
+        LogInfo(msg=[f'Rosbag output: {bag_output}']),
         webots,
         bridge_driver,
         map_publisher,
