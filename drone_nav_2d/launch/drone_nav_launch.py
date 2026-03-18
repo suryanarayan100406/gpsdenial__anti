@@ -2,30 +2,45 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from webots_ros2_driver.webots_launcher import WebotsLauncher
 
 
-def generate_launch_description() -> LaunchDescription:
+def _build_actions(context):
     pkg_share = get_package_share_directory('drone_nav_2d')
     params_file = os.path.join(pkg_share, 'config', 'nav_params.yaml')
     rviz_config = os.path.join(pkg_share, 'rviz', 'drone_nav.rviz')
     world_easy = os.path.join(pkg_share, 'worlds', 'drone_world.wbt')
     world_hard = os.path.join(pkg_share, 'worlds', 'drone_world_hard.wbt')
+    world_realistic = os.path.join(pkg_share, 'worlds', 'drone_world_realistic.wbt')
     urdf_path = os.path.join(pkg_share, 'urdf', 'drone.urdf')
 
-    use_hard_world = LaunchConfiguration('use_hard_world')
+    world_profile = LaunchConfiguration('world_profile').perform(context).strip().lower()
     bag_output = LaunchConfiguration('bag_output')
+
+    selected_world = world_realistic
+    if world_profile == 'easy':
+        selected_world = world_easy
+    elif world_profile == 'hard':
+        selected_world = world_hard
 
     with open(urdf_path, 'r', encoding='utf-8') as f:
         robot_description = f.read()
 
-    # Use easy world by default for demo
-    webots = WebotsLauncher(
-        world=world_easy,
-        ros2_supervisor=True,
+    webots_home = os.environ.get('WEBOTS_HOME', '')
+    webots_executable = os.path.join(webots_home, 'webots') if webots_home else 'webots'
+
+    webots = ExecuteProcess(
+        cmd=[
+            webots_executable,
+            '--port=1234',
+            selected_world,
+            '--batch',
+            '--mode=realtime',
+        ],
+        output='screen',
+        name='webots',
     )
 
     bridge_driver = Node(
@@ -115,17 +130,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     actions = [
-        DeclareLaunchArgument(
-            'use_hard_world',
-            default_value='false',
-            description='Set true to launch drone_world_hard.wbt',
-        ),
-        DeclareLaunchArgument(
-            'bag_output',
-            default_value='bags/drone_nav_run',
-            description='Output directory for rosbag2 recording',
-        ),
-        LogInfo(msg=['Launching drone navigation demo (easy world configuration)']),
+        LogInfo(msg=[f'Launching drone navigation in {world_profile} scenario']),
         webots,
         bridge_driver,
         map_publisher,
@@ -135,6 +140,24 @@ def generate_launch_description() -> LaunchDescription:
         metrics,
         rviz,
         rosbag,
+    ]
+
+    return actions
+
+
+def generate_launch_description() -> LaunchDescription:
+    actions = [
+        DeclareLaunchArgument(
+            'world_profile',
+            default_value='realistic',
+            description='Scenario world: easy | hard | realistic',
+        ),
+        DeclareLaunchArgument(
+            'bag_output',
+            default_value='bags/drone_nav_run',
+            description='Output directory for rosbag2 recording',
+        ),
+        OpaqueFunction(function=_build_actions),
     ]
 
     return LaunchDescription(actions)

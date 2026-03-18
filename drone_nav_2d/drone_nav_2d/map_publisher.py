@@ -124,23 +124,28 @@ class MapPublisher(Node):
             marker.action = Marker.ADD
             marker.pose.position.x = obs['x']
             marker.pose.position.y = obs['y']
-            marker.pose.position.z = 0.25
             marker.pose.orientation.w = 1.0
-            marker.color.r = 0.85
-            marker.color.g = 0.1
-            marker.color.b = 0.1
-            marker.color.a = 0.75
 
             if obs['type'] == 'box':
                 marker.type = Marker.CUBE
                 marker.scale.x = obs['sx']
                 marker.scale.y = obs['sy']
-                marker.scale.z = 0.5
+                marker.scale.z = 1.0
+                marker.pose.position.z = 0.5
+                marker.color.r = 0.62
+                marker.color.g = 0.42
+                marker.color.b = 0.20
+                marker.color.a = 0.95
             else:
                 marker.type = Marker.CYLINDER
                 marker.scale.x = obs['r'] * 2.0
                 marker.scale.y = obs['r'] * 2.0
-                marker.scale.z = 0.5
+                marker.scale.z = 1.2
+                marker.pose.position.z = 0.6
+                marker.color.r = 0.72
+                marker.color.g = 0.12
+                marker.color.b = 0.08
+                marker.color.a = 0.95
 
             markers.markers.append(marker)
 

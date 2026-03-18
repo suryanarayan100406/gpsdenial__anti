@@ -78,6 +78,15 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[params_file],
     )
 
+    # Realistic drone model visualizer
+    drone_visualizer = Node(
+        package='drone_nav_2d',
+        executable='drone_visualizer',
+        name='drone_visualizer',
+        output='screen',
+        parameters=[params_file],
+    )
+
     # RViz2 for visualization
     rviz = Node(
         package='rviz2',
@@ -123,6 +132,7 @@ def generate_launch_description() -> LaunchDescription:
         controller,
         avoidance,
         metrics,
+        drone_visualizer,
         rviz,
         rosbag,
     ])

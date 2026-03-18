@@ -16,7 +16,7 @@ setup(
         ]),
         (f'share/{package_name}/config', ['config/nav_params.yaml']),
         (f'share/{package_name}/rviz', ['rviz/drone_nav.rviz']),
-        (f'share/{package_name}/worlds', ['worlds/drone_world.wbt', 'worlds/drone_world_hard.wbt']),
+        (f'share/{package_name}/worlds', ['worlds/drone_world.wbt', 'worlds/drone_world_hard.wbt', 'worlds/drone_world_realistic.wbt']),
         (f'share/{package_name}/controllers/moving_wall_controller', ['controllers/moving_wall_controller/moving_wall_controller.py']),
         (f'share/{package_name}/urdf', ['urdf/drone.urdf']),
     ],
@@ -36,6 +36,7 @@ setup(
             'metrics_logger = drone_nav_2d.metrics_logger:main',
                 'dynamic_environment = drone_nav_2d.dynamic_environment:main',
                 'advanced_metrics = drone_nav_2d.advanced_metrics:main',
+                'drone_visualizer = drone_nav_2d.drone_visualizer:main',
             ],
     },
 )

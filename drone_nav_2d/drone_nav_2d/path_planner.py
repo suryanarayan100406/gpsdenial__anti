@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.node import Node
 from std_msgs.msg import Bool
@@ -44,6 +45,7 @@ class PathPlanner(Node):
         self.declare_parameter('rrt_max_iterations', 2500)
         self.declare_parameter('rrt_step_size_m', 0.35)
         self.declare_parameter('rrt_goal_sample_rate', 0.2)
+        self.declare_parameter('replan_min_start_shift_m', 0.35)
 
         self.w_manhattan = self.get_parameter('heuristic_weight_manhattan').value
         self.w_euclidean = self.get_parameter('heuristic_weight_euclidean').value
@@ -51,6 +53,7 @@ class PathPlanner(Node):
         self.start_xy = tuple(self.get_parameter('start_xy').value)
         self.goal_xy = tuple(self.get_parameter('goal_xy').value)
         replan_rate_hz = float(self.get_parameter('replan_rate_hz').value)
+        self.replan_min_start_shift_m = float(self.get_parameter('replan_min_start_shift_m').value)
 
         random_seed = int(self.get_parameter('random_seed').value)
         random.seed(random_seed)
@@ -59,7 +62,11 @@ class PathPlanner(Node):
         self.state = PlannerState()
         self.current_pose: Optional[PoseStamped] = None
         self.replan_requested = True
+        self.mission_completed = False
         self.last_path: List[Tuple[float, float]] = []
+        self.last_start_cell: Optional[GridCell] = None
+        self.last_goal_cell: Optional[GridCell] = None
+        self.last_start_world: Optional[Tuple[float, float]] = None
 
         self.path_pub = self.create_publisher(Path, '/planned_path', 10)
         self.replan_event_pub = self.create_publisher(Bool, '/replan_event', 10)
@@ -67,6 +74,9 @@ class PathPlanner(Node):
         self.create_subscription(OccupancyGrid, '/map', self._on_map, 10)
         self.create_subscription(PoseStamped, '/drone_pose', self._on_pose, 10)
         self.create_subscription(Bool, '/replan_request', self._on_replan_request, 10)
+        self.create_subscription(Bool, '/mission_complete', self._on_mission_complete, 10)
+        self.create_subscription(PoseStamped, '/goal_pose', self._on_goal_pose, 10)
+        self.create_subscription(PointStamped, '/clicked_point', self._on_clicked_point, 10)
 
         self.timer = self.create_timer(max(0.1, 1.0 / replan_rate_hz), self._plan_if_needed)
         self.get_logger().info('Path planner initialized.')
@@ -88,8 +98,41 @@ class PathPlanner(Node):
         if msg.data:
             self.replan_requested = True
 
+    def _on_mission_complete(self, msg: Bool) -> None:
+        if msg.data:
+            self.mission_completed = True
+
+    def _on_goal_pose(self, msg: PoseStamped) -> None:
+        self.goal_xy = (msg.pose.position.x, msg.pose.position.y)
+        self.replan_requested = True
+        self.mission_completed = False
+        self.get_logger().info(
+            f'New user goal received on /goal_pose: ({self.goal_xy[0]:.2f}, {self.goal_xy[1]:.2f})'
+        )
+
+    def _on_clicked_point(self, msg: PointStamped) -> None:
+        self.goal_xy = (msg.point.x, msg.point.y)
+        self.replan_requested = True
+        self.mission_completed = False
+        self.get_logger().info(
+            f'New user goal received on /clicked_point: ({self.goal_xy[0]:.2f}, {self.goal_xy[1]:.2f})'
+        )
+
+    def _path_changed(self, path_world: List[Tuple[float, float]]) -> bool:
+        if len(path_world) != len(self.last_path):
+            return True
+        if not path_world:
+            return False
+        if not self.last_path:
+            return True
+        first_delta = math.hypot(path_world[0][0] - self.last_path[0][0], path_world[0][1] - self.last_path[0][1])
+        last_delta = math.hypot(path_world[-1][0] - self.last_path[-1][0], path_world[-1][1] - self.last_path[-1][1])
+        return first_delta > self.state.resolution or last_delta > self.state.resolution
+
     def _plan_if_needed(self) -> None:
         if self.state.grid is None:
+            return
+        if self.mission_completed and not self.replan_requested:
             return
         if self.current_pose is None and not self.replan_requested:
             return
@@ -103,6 +146,20 @@ class PathPlanner(Node):
 
         start = self.world_to_grid(*start_world)
         goal = self.world_to_grid(*self.goal_xy)
+
+        start_shift = float('inf')
+        if self.last_start_world is not None:
+            start_shift = math.hypot(
+                start_world[0] - self.last_start_world[0],
+                start_world[1] - self.last_start_world[1],
+            )
+
+        if (
+            not self.replan_requested
+            and self.last_goal_cell == goal
+            and start_shift < self.replan_min_start_shift_m
+        ):
+            return
 
         if not self._is_free(start) or not self._is_free(goal):
             self.get_logger().warn('Start or goal lies in obstacle after inflation. Waiting for valid state.')
@@ -120,7 +177,17 @@ class PathPlanner(Node):
             self.get_logger().error('No valid path found by A* or RRT.')
             return
 
-        self.last_path = [self.grid_to_world(c[0], c[1]) for c in path_grid]
+        candidate_path = [self.grid_to_world(c[0], c[1]) for c in path_grid]
+        should_publish = self.replan_requested or self._path_changed(candidate_path)
+
+        self.last_start_cell = start
+        self.last_goal_cell = goal
+        self.last_start_world = start_world
+
+        if not should_publish:
+            return
+
+        self.last_path = candidate_path
         self.publish_path(self.last_path)
 
         event_msg = Bool()
@@ -165,11 +232,10 @@ class PathPlanner(Node):
         return result
 
     def _heuristic(self, a: GridCell, b: GridCell) -> float:
-        dx = abs(a[0] - b[0])
-        dy = abs(a[1] - b[1])
-        manhattan = dx + dy
+        dx = a[0] - b[0]
+        dy = a[1] - b[1]
         euclidean = math.sqrt(dx * dx + dy * dy)
-        return self.w_manhattan * manhattan + self.w_euclidean * euclidean
+        return euclidean
 
     def a_star(self, start: GridCell, goal: GridCell) -> List[GridCell]:
         open_heap: List[Tuple[float, GridCell]] = []
