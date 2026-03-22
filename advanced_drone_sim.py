@@ -56,6 +56,14 @@ GOAL  = np.array([ 5.0,  4.0, 2.5])
 
 INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
 
+# ── POP-UP OBSTACLES (appear suddenly mid-flight) ────
+# Each entry: (cx, cy, radius, height, spawn_at_step)
+POPUP_OBSTACLES = [
+    (0.0,  0.5, 0.6, 2.5, 80),   # Rock wall spawns at step 80 right in the drone's path
+    (2.5,  2.0, 0.5, 2.0, 160),  # Second pop-up at step 160 near goal approach
+]
+active_popups = []  # list of (cx,cy,r,h) that have spawned so far
+
 # Static Nature: (cx, cy, radius, height)
 TREES = [
     (-3.5,  2.0, 0.55, 3.2),
@@ -958,33 +966,73 @@ def run_engine():
         'metrics': [metrics.score()],
     }
 
-    REPLAN_INTERVAL = 8  # steps between D* replans
+    REPLAN_INTERVAL = 10   # steps between D* Lite replans (slow planner, ~1 Hz at dt=0.1)
+    FAST_REFLEX_HZ  = 20   # reflex sub-checks per second
+    REFLEX_TICKS    = max(1, int(1.0 / (FAST_REFLEX_HZ * dt)))  # steps per reflex tick = 1
     PFIELD_WEIGHT   = 0.5
     MAX_STEPS       = 600
+    popup_fired     = set()  # track which popups already announced
 
     for step in range(MAX_STEPS):
         t += dt
         # Dynamic obstacle positions
         dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
+        # ── POP-UP OBSTACLE SPAWN CHECK ─────────────────────
+        for (pcx, pcy, pr, ph, spawn_step) in POPUP_OBSTACLES:
+            if step == spawn_step:
+                active_popups.append((pcx, pcy, pr, ph))
+                popup_id = spawn_step
+                if popup_id not in popup_fired:
+                    popup_fired.add(popup_id)
+                    print(f"\n⚡ POPUP OBSTACLE SPAWNED at step {step}! "
+                          f"({pcx:.1f}, {pcy:.1f}) r={pr}m — "
+                          f"LiDAR reflexes FIRING (20Hz)!")
+
+        # Merge active popups into STATIC_OBSTACLES for this step
+        all_obstacles = STATIC_OBSTACLES + active_popups
+
+        # ══ FAST LAYER: LiDAR reflex (20Hz) ════════════════─
         # Sensor: lidar, IMU, barometer
+        # This runs EVERY STEP (dt=0.05s → 20Hz) — drone's instant reflexes
         lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
 
-        # Obstacle distance (for potential field & metrics)
+        # Obstacle distance using ALL obstacles (including popups)
         min_d = obstacle_distance(drone_pos, dyn_cur)
+        # Also factor in static + popup proximity for realistic LiDAR
+        for (pcx, pcy, pr, ph) in active_popups:
+            d_popup = max(0.01, math.sqrt((drone_pos[0]-pcx)**2 + (drone_pos[1]-pcy)**2) - pr)
+            min_d = min(min_d, d_popup)
 
-        # ── Potential Field ──────────────────────────
+        # ── Potential Field (uses ALL obstacles) ──────
         pf_force = potential_force(drone_pos, GOAL, dyn_cur)
+        # Extra repulsion from popup obstacles (LiDAR-detected)
+        for (pcx, pcy, pr, ph) in active_popups:
+            pp = np.array([pcx, pcy, drone_pos[2]])
+            diff = drone_pos - pp
+            d = max(0.01, np.linalg.norm(diff) - pr)
+            if d < RHO_0:
+                pf_force += K_REP * (1/d - 1/RHO_0) * (1/d**2) * (diff/(d+pr))
 
-        # ── Check path blockage ──────────────────────
+        # ── Path blockage check (fast 20Hz) ───────────
+        # Checks dynamic + popup obstacles (slow planner doesn't know about popups yet)
+        # Check blockage from both dynamic AND popup obstacles
         blocked = False
         if active_path:
             for wp in active_path[:5]:
                 for (dpos, dr) in dyn_cur:
                     if np.linalg.norm(np.array(wp)-dpos) < dr + INFLATION_RADIUS:
                         blocked = True; break
+                # Also check popup obstacles
+                for (pcx, pcy, pr, ph) in active_popups:
+                    wp_a = np.array(wp)
+                    if math.sqrt((wp_a[0]-pcx)**2+(wp_a[1]-pcy)**2) < pr + INFLATION_RADIUS:
+                        blocked = True
+                        print(f"   [REFLEX 20Hz] Step {step}: popup obstacle blocks waypoint! "
+                              f"JPS replanning NOW...")
+                        break
                 if blocked: break
 
         did_replan   = False
@@ -1007,9 +1055,21 @@ def run_engine():
                     active_path = new_path
                     did_replan  = True
 
-        # ── D* Lite periodic replan ──────────────────
+        # ══ SLOW LAYER: D* Lite path replanner (~1Hz) ══════════─
+        # Runs every REPLAN_INTERVAL steps (10 * 0.1s = 1 second)
+        # Bakes popup obstacles into the voxel grid and replans globally
         if step % REPLAN_INTERVAL == 0:
+            # Rebuild grid with CURRENT popup obstacles baked in
             grid_new = get_grid(dyn_cur)
+            # Mark popup voxels as occupied
+            for (pcx, pcy, pr, ph) in active_popups:
+                infl = pr + INFLATION_RADIUS
+                for ix in range(NX):
+                    for iy in range(NY):
+                        wx, wy = -WORLD_XY + ix*VOXEL_RES, -WORLD_XY + iy*VOXEL_RES
+                        if math.sqrt((wx-pcx)**2+(wy-pcy)**2) < infl:
+                            nz_top = min(NZ-1, int(ph/VOXEL_RES))
+                            grid_new[ix, iy, :nz_top+1] = True
             dstar.update_grid(grid_new, w2v(drone_pos))
             dstar.compute(max_iter=5000)
             dstar_wp = dstar.extract_path()
