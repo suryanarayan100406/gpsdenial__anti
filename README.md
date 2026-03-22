@@ -24,6 +24,9 @@ This project simulates a GPS-denied drone autonomously navigating through a real
 | **Phase 2 Fallback 2** | **Informed RRT\*** | Probabilistic optimal path using PRM cost as ellipsoidal bound |
 | **Phase 3** | **D\* Lite** | Incremental replanning when dynamic obstacles change the environment |
 | **Reactive** | **Jump Point Search (JPS)** | Ultra-fast 2D replanner triggered when path is blocked by a moving obstacle |
+| **Smart Brain** | **ObstaclePredictor** | Constant-velocity extrapolation of all dynamic obstacles 6 steps into the future |
+| **Smart Brain** | **DWA** (Dynamic Window Approach) | Samples 144 velocity candidates per step, scores by heading + clearance + speed using predicted obstacle positions |
+| **Smart Brain** | **MPC** (Model Predictive Control) | 60-rollout N-step trajectory optimiser; minimises goal distance + obstacle proximity + control effort + jerk |
 | **Reactive** | **Potential Fields** | Smooth blended attractive/repulsive forces guide the drone between waypoints |
 | **Reactive** | **Emergency Reflexes** | Instant escape thrust when any obstacle breaches 0.8 m proximity |
 | **Control** | **Cascaded PID** | Position → Velocity control in all 3 axes |
