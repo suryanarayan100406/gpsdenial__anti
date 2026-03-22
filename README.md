@@ -1,181 +1,173 @@
-# GPS-Denied Drone Navigation System 🚁
+# 🚁 GPS-Denied Drone Navigation System
 
-> **Advanced autonomous drone navigation without GPS** — using multi-layer sensor fusion, a full algorithm stack for path planning, dynamic obstacle avoidance, and real-time LiDAR reflexes.
+> **Autonomous navigation of a drone from start to goal in a 3D realistic environment — using advanced multi-layered algorithms for path planning, dynamic obstacle avoidance, and adaptive replanning.**
 
----
-
-## 🏆 Algorithm Stack
-
-### Path Planning (Hierarchical Cascade)
-
-| Layer | Algorithm | Role | Quality |
-|---|---|---|---|
-| 1 | **PRM** (Probabilistic Roadmap) | Global roadmap construction | Fast, probabilistic |
-| 2 | **Theta\*** (Any-Angle A\*) | Optimal initial path | Near-geometric optimal ✅ |
-| 2a | **Bidirectional A\*** | Backup if Theta\* fails | Provably optimal, 2× faster than A\* |
-| 2b | **Informed RRT\*** | Last-resort fallback | Asymptotically optimal |
-| 3 | **D\* Lite** | Global dynamic replanning (1 Hz) | Handles map changes |
-| 4 | **JPS** (Jump Point Search) | Fast blocked-path replan | 10× faster than RRT\* on grids |
-
-### Why Theta\*?
-Theta\* is the best algorithm for **maximum path optimality**. Unlike grid-based A\* which forces zig-zagged grid-edge movement, Theta\* performs **line-of-sight checks between ancestors**, allowing movement at any angle. This produces near-geometric shortest paths — provably closer to the true optimal than any standard grid algorithm.
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)
+![Matplotlib](https://img.shields.io/badge/Visualisation-Matplotlib-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## ⚡ Dual-Rate Obstacle Avoidance Architecture
+## 📋 Overview
+
+This project simulates a GPS-denied drone autonomously navigating through a realistic 3D forest environment filled with **static** and **dynamic** obstacles (birds, animals, UAVs). It demonstrates a full multi-algorithm pipeline — from roadmap construction to real-time reactive avoidance — all visualised live.
+
+---
+
+## 🧠 Algorithm Stack
+
+| Phase | Algorithm | Purpose |
+|-------|-----------|---------|
+| **Phase 1** | **PRM** (Probabilistic Roadmap) + Dijkstra | Fast graph construction and initial route seed |
+| **Phase 2** | **Theta\*** (Any-Angle A\*) | Maximum path optimality — near-geometric-shortest-path via 3D line-of-sight |
+| **Phase 2 Fallback 1** | **Bidirectional A\*** | Expands from start AND goal; meets in the middle — always optimal, ~2× faster than A\* |
+| **Phase 2 Fallback 2** | **Informed RRT\*** | Probabilistic optimal path using PRM cost as ellipsoidal bound |
+| **Phase 3** | **D\* Lite** | Incremental replanning when dynamic obstacles change the environment |
+| **Reactive** | **Jump Point Search (JPS)** | Ultra-fast 2D replanner triggered when path is blocked by a moving obstacle |
+| **Reactive** | **Potential Fields** | Smooth blended attractive/repulsive forces guide the drone between waypoints |
+| **Reactive** | **Emergency Reflexes** | Instant escape thrust when any obstacle breaches 0.8 m proximity |
+| **Control** | **Cascaded PID** | Position → Velocity control in all 3 axes |
+| **Control** | **Anti-Windup** | PID integrator clamped to ±2.0 to prevent saturation |
+| **Sensing** | **Lidar + IMU + Barometer** | Simulated sensor fusion providing data to the replanner |
+
+---
+
+## 🗂️ Project Structure
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  FAST LAYER: LiDAR Reflex — 20 Hz (every step)     │
-│  • Real-time LiDAR scan (12 beams, 360°)            │
-│  • Detects popup/ dynamic obstacles instantly       │
-│  • Fires Potential Field repulsion immediately      │
-│  • Emergency dodge if obstacle < 0.8m              │
-│  • Triggers JPS replan same step it detects         │
-└─────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────┐
-│  SLOW LAYER: D* Lite Replanner — 1 Hz (every 10s)  │
-│  • Bakes popup obstacles into full voxel grid       │
-│  • Global optimal replan across the whole map       │
-│  • Updates active waypoint path completely          │
-└─────────────────────────────────────────────────────┘
+drone/
+├── advanced_drone_sim.py      # Main simulation — all algorithms, physics, animation
+├── drone_telemetry_cmd.py     # Real-time CMD telemetry dashboard (2nd terminal)
+├── metrics_evaluator.py       # Standalone performance comparison vs. baselines
+├── run_demo.bat               # One-click launcher — opens all 3 terminals at once
+└── README.md
 ```
-
----
-
-## 🌲 World & Obstacle Types
-
-| Type | Count | Behaviour |
-|---|---|---|
-| Trees (cylinders) | 5 | Static |
-| Rocks (low cylinders) | 3 | Static |
-| Dynamic Obstacles | 4 | Moving, bounce off walls |
-| **Pop-up Obstacles** | 2 | Appear suddenly mid-flight at steps 80 & 160 |
-
-Pop-up obstacles test the drone's instant LiDAR reflex response — they materialise directly in the drone's path without warning, forcing real-time course correction.
-
----
-
-## 🧠 Sensor Architecture
-
-| Sensor | Rate | Data |
-|---|---|---|
-| LiDAR | 20 Hz | 12-beam radial distance scan |
-| IMU | 20 Hz | Linear velocity + acceleration |
-| Barometer | 20 Hz | Altitude (Z position) |
-
-Sensor data drives the **Potential Field + Reflex** layer directly, while the **path planner** uses the voxel grid model updated from the same sensor feed.
-
----
-
-## 🎮 PID Controller
-
-Cascaded PID architecture with **anti-windup protection**:
-
-```
-Position Error → [Pos PID] → Velocity Command
-                               → [Vel PID] → Force Command
-                                              → Potential Field blending
-                                              → Motor command (clamped)
-```
-
-**Obstacle Inflation**: All obstacles are inflated by `INFLATION_RADIUS = 0.6m` in the grid so the drone always plans with safety margin.
-
----
-
-## 📊 Metrics Evaluator
-
-Real-time scoring across 5 dimensions:
-
-| Metric | Formula | Best |
-|---|---|---|
-| Path Optimality % | `Theta* length / actual flown` | 100% |
-| Obstacle Clearance % | Based on min distance to obstacles | 100% |
-| Goal Progress % | How far toward goal | 100% |
-| Replanning Score % | `50 + 5×D*replans + 3×JPS replans` (capped 100) | 100% |
-| Overall Score | Weighted average | 100% |
 
 ---
 
 ## 🚀 Quick Start
 
-### Run Everything at Once
-```bat
-run_demo.bat
-```
-This launches 3 terminals simultaneously:
-1. **Main Simulation** — `advanced_drone_sim.py` (3D + top-down GUI)
-2. **Telemetry Monitor** — `drone_telemetry_cmd.py` (live data feed, CMD-style)
-3. **Metrics Evaluator** — `metrics_evaluator.py` (live scoring dashboard)
+### Prerequisites
 
-### Run Individually
-```bash
-python advanced_drone_sim.py      # Main simulation
-python drone_telemetry_cmd.py     # Live telemetry (run in parallel)
-python metrics_evaluator.py       # Scoring dashboard (run in parallel)
-```
-
-### Requirements
 ```bash
 pip install numpy matplotlib
 ```
 
----
+### Run (1-click)
 
-## 📁 Files
-
-| File | Purpose |
-|---|---|
-| `advanced_drone_sim.py` | Main simulation engine — all algorithms, physics, 3D GUI |
-| `drone_telemetry_cmd.py` | CMD-style live telemetry display |
-| `metrics_evaluator.py` | Scoring dashboard |
-| `run_demo.bat` | One-click launcher for all 3 components |
-| `QUICK_START.md` | Quick reference |
-| `ROBOTHON_SUBMISSION_SUMMARY.md` | Full submission documentation |
-
----
-
-## 🏗️ Architecture Overview
-
+```cmd
+run_demo.bat
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                    Advanced Drone Sim                         │
-│                                                               │
-│  START ──► [PRM] ──► [Theta*] ──► Active Waypoint Path       │
-│                         ↑                                     │
-│              [Bidirectional A*] (fallback 1)                 │
-│              [Informed RRT*]    (fallback 2)                 │
-│                                                               │
-│  Per Step (20Hz):                                            │
-│    LiDAR → Reflex Layer → Potential Field Force              │
-│    Popup obstacle? → JPS instant replan                       │
-│    Emergency (<0.8m)? → Immediate dodge thrust                │
-│                                                               │
-│  Per 10 Steps (1Hz):                                         │
-│    D* Lite global replan with popup obstacles baked in        │
-│                                                               │
-│  PID → Vel Command → Clamped acceleration → Physics           │
-│                                                               │
-│  Telemetry → telemetry_live.json → drone_telemetry_cmd.py    │
-└───────────────────────────────────────────────────────────────┘
+
+This opens **3 terminals simultaneously**:
+
+| Terminal | Script | Shows |
+|----------|--------|-------|
+| **1** | `advanced_drone_sim.py` | 4-panel 3D visualiser (world, top-down, potential field, metrics) |
+| **2** | `drone_telemetry_cmd.py` | ANSI live dashboard — pose, sensors, PID, replanning events |
+| **3** | `metrics_evaluator.py` | Comparison matrix vs. Naïve A\*, basic A\*, basic RRT |
+
+### Run individually
+
+```bash
+# Terminal 1 — Simulation
+python advanced_drone_sim.py
+
+# Terminal 2 — Live Telemetry (run alongside sim)
+python drone_telemetry_cmd.py
+
+# Terminal 3 — Metrics
+python metrics_evaluator.py
 ```
 
 ---
 
-## 🔬 Key Constants
+## 🌍 Environment
 
-| Parameter | Value | Effect |
-|---|---|---|
-| `VOXEL_RES` | 0.4 m | Grid resolution |
-| `INFLATION_RADIUS` | 0.6 m | Safety margin around obstacles |
-| `RHO_0` | 1.5 m | Potential field influence radius |
-| `K_REP` | 3.0 | Repulsive force strength |
-| `REPLAN_INTERVAL` | 10 steps | D\* Lite slow replan rate (1 Hz) |
-| `FAST_REFLEX_HZ` | 20 Hz | LiDAR reflex rate |
-| `MAX_STEPS` | 600 | Simulation length |
+- **World size**: 20 × 20 × 8 m voxel grid
+- **Voxel resolution**: 0.5 m
+- **Static obstacles**: Trees, rocks, boulders (inflated safety margin applied)
+- **Dynamic obstacles**: 3 moving objects — Bird, Animal, UAV — crossing the drone's path
+- **Start**: `[1, 1, 2]` m
+- **Goal**: `[18, 18, 5]` m
 
 ---
 
-*GPS-Denied Drone Navigation — Advanced System*
-*Algorithms: PRM · Theta\* · Bidirectional A\* · Informed RRT\* · D\* Lite · JPS · PID · Potential Field*
+## 📊 Metrics
+
+The `MetricsEvaluator` tracks and scores the full flight on 5 axes:
+
+| Metric | Description |
+|--------|-------------|
+| `path_optimality_%` | `straight_line / actual_path_flown × 100` (higher = more direct) |
+| `safety_score_%` | Penalised for every obstacle breach below 0.8 m |
+| `energy_score_%` | Integral of ‖velocity‖² — rewards efficient, steady flight |
+| `replanning_score_%` | Rewards smart replanning (D\* + JPS events), starts at 50, caps at 100 |
+| `TOTAL_SCORE_%` | Weighted: 35% optimality + 30% safety + 15% energy + 20% replanning |
+
+---
+
+## 🛰️ Sensor Architecture
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Lidar     │    │    IMU      │    │  Barometer  │
+│ 12 beams    │    │ vel + noise │    │ alt + noise │
+│ range: 4.0m │    │             │    │             │
+└──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+       │                  │                  │
+       └──────────────────┴──────────────────┘
+                          │
+                  ┌───────▼────────┐
+                  │  Sensor Fusion │
+                  │  Obstacle Map  │
+                  └───────┬────────┘
+                          │
+           ┌──────────────┼──────────────┐
+           ▼              ▼              ▼
+       D* Lite          JPS         Potential
+      Replanner      Replanner       Fields
+```
+
+---
+
+## 🎛️ Key Configuration (in `advanced_drone_sim.py`)
+
+```python
+VOXEL_RES        = 0.5     # Grid resolution (m)
+INFLATION_RADIUS = 0.4     # Safety margin around obstacles
+K_ATT            = 1.5     # Potential field attractive gain
+K_REP            = 8.0     # Potential field repulsive gain
+RHO_0            = 1.5     # Repulsive influence radius (m)
+PFIELD_WEIGHT    = 0.6     # Blend weight for potential field in velocity command
+REPLAN_INTERVAL  = 5       # D* Lite replan every N steps
+NUM_SAMPLES      = 200     # PRM node count
+```
+
+---
+
+## 📡 Live Telemetry (CMD Dashboard)
+
+When `drone_telemetry_cmd.py` is running in a second terminal it shows:
+
+```
+╔══════════════ DRONE TELEMETRY ══════════════╗
+║  Pos:  [12.4, 11.2,  4.8] m               ║
+║  Vel:  [0.82, 0.76, 0.12] m/s   Spd: 1.13 ║
+║  Alt:  4.80 m (baro)                       ║
+║  IMU:  [0.83, 0.77, 0.13]                  ║
+║  Lidar hits: 3/12    Min dist: 1.42 m      ║
+║  PF force:   1.87    Anti-windup: OFF      ║
+║  D* replans: 4       JPS replans: 1        ║
+╠═══════════════ SCORES ══════════════════════╣
+║  Path Opt: 74.2%   Safety: 96.0%           ║
+║  Energy:   81.5%   Replanning: 85.0%       ║
+║  TOTAL:    82.4%                            ║
+╚═════════════════════════════════════════════╝
+```
+
+---
+
+## 📝 License
+
+MIT License — feel free to use, adapt, and build on this for your own projects.
