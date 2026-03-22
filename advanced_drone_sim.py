@@ -56,14 +56,6 @@ GOAL  = np.array([ 5.0,  4.0, 2.5])
 
 INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
 
-# ── POP-UP OBSTACLES (appear suddenly mid-flight) ────
-# Each entry: (cx, cy, radius, height, spawn_at_step)
-POPUP_OBSTACLES = [
-    (0.0,  0.5, 0.6, 2.5, 80),   # Rock wall spawns at step 80 right in the drone's path
-    (2.5,  2.0, 0.5, 2.0, 160),  # Second pop-up at step 160 near goal approach
-]
-active_popups = []  # list of (cx,cy,r,h) that have spawned so far
-
 # Static Nature: (cx, cy, radius, height)
 TREES = [
     (-3.5,  2.0, 0.55, 3.2),
@@ -190,6 +182,231 @@ def potential_force(pos, goal, dyn_pos_list):
             f_rep += coeff * grad
 
     return f_att + f_rep
+
+# ════════════════════════════════════════════════════
+#  OBSTACLE MOVEMENT PREDICTOR
+#  Extrapolates dynamic obstacle positions N steps ahead
+#  using constant-velocity model (Kalman-ready interface)
+# ════════════════════════════════════════════════════
+class ObstaclePredictor:
+    """Predict future positions of all dynamic obstacles.
+    Uses constant-velocity model; can be upgraded to Kalman later.
+    """
+    def __init__(self, obstacles):
+        self.obstacles = obstacles  # list of dicts with 'pos','vel','r'
+        self.history   = {i: [] for i in range(len(obstacles))}
+
+    def update(self, t):
+        """Update observed positions at current time t."""
+        for i, obs in enumerate(self.obstacles):
+            cur = obs['pos'] + obs['vel'] * t
+            self.history[i].append(cur.copy())
+            if len(self.history[i]) > 10:
+                self.history[i].pop(0)
+
+    def predict(self, t, horizon_steps, dt):
+        """Return list of predicted (pos, radius) for each obstacle
+        at time steps t+dt, t+2dt, ..., t+horizon*dt.
+        """
+        predictions = []
+        for i, obs in enumerate(self.obstacles):
+            cur = obs['pos'] + obs['vel'] * t
+            # Estimate velocity from history if available
+            if len(self.history[i]) >= 2:
+                v_est = (self.history[i][-1] - self.history[i][-2]) / dt
+            else:
+                v_est = obs['vel']
+            future = []
+            for k in range(1, horizon_steps + 1):
+                future.append((cur + v_est * k * dt, obs['r']))
+            predictions.append(future)
+        return predictions  # shape: [n_obstacles][horizon_steps] → (pos, r)
+
+
+# ════════════════════════════════════════════════════
+#  DWA — Dynamic Window Approach
+#  Samples feasible velocity space and picks the best
+#  trajectory based on heading + clearance + speed.
+#  Operates at every control step for real-time avoidance.
+# ════════════════════════════════════════════════════
+class DWA:
+    def __init__(self):
+        # Drone kinematic limits
+        self.max_speed    = 2.5    # m/s
+        self.max_accel    = 3.0    # m/s² (dynamic window constraint)
+        self.v_samples    = 9      # velocity magnitude samples
+        self.theta_samples= 16     # direction samples (full circle)
+        self.sim_time     = 1.2    # lookahead time for trajectory scoring
+        self.dt_sim       = 0.15   # simulation step within lookahead
+
+        # Scoring weights
+        self.w_heading  = 2.0   # reward pointing toward goal
+        self.w_clearance= 3.0   # reward staying far from obstacles
+        self.w_speed    = 0.8   # reward high speed
+
+    def compute(self, drone_pos, drone_vel, goal, dyn_cur_pred, static_obs):
+        """
+        drone_pos, drone_vel: np.array(3)
+        goal: np.array(3)
+        dyn_cur_pred: list of (pos, r) — predicted obstacle positions at 1 step ahead
+        static_obs: list of (cx, cy, r, h)
+
+        Returns best_vel: np.array(3) velocity command
+        """
+        cur_speed = np.linalg.norm(drone_vel)
+
+        # Dynamic window: reachable velocities given max acceleration
+        v_min = max(0.0, cur_speed - self.max_accel * self.dt_sim)
+        v_max = min(self.max_speed, cur_speed + self.max_accel * self.dt_sim)
+
+        best_score = -1e9
+        best_vel   = drone_vel.copy()
+
+        for vi in range(self.v_samples):
+            v_mag = v_min + (v_max - v_min) * vi / max(1, self.v_samples - 1)
+
+            for ti in range(self.theta_samples):
+                angle = 2 * math.pi * ti / self.theta_samples
+                # Direction in XY plane, keep Z from PID
+                dx = math.cos(angle)
+                dy = math.sin(angle)
+                dz = (goal[2] - drone_pos[2]) * 0.3  # soft altitude push
+                direction = np.array([dx, dy, dz])
+                direction /= (np.linalg.norm(direction) + 1e-6)
+                vel_cand = direction * v_mag
+
+                # Simulate trajectory
+                pos = drone_pos.copy()
+                min_clearance = 1e9
+                collided = False
+                for step in range(int(self.sim_time / self.dt_sim)):
+                    pos = pos + vel_cand * self.dt_sim
+                    # Check static obstacles
+                    for (cx, cy, r, h) in static_obs:
+                        d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
+                        if d < 0.3:
+                            collided = True; break
+                        min_clearance = min(min_clearance, d)
+                    if collided: break
+                    # Check predicted dynamic obstacles
+                    for (dpos, dr) in dyn_cur_pred:
+                        d = np.linalg.norm(pos - dpos) - dr
+                        if d < 0.3:
+                            collided = True; break
+                        min_clearance = min(min_clearance, d)
+                    if collided: break
+
+                if collided: continue
+
+                # Score this trajectory
+                to_goal = goal - pos
+                dist    = np.linalg.norm(to_goal)
+                heading_score   = 1.0 / (dist + 0.01)
+                clearance_score = min(1.0, min_clearance / 2.0)
+                speed_score     = v_mag / self.max_speed
+
+                score = (self.w_heading   * heading_score +
+                         self.w_clearance * clearance_score +
+                         self.w_speed     * speed_score)
+
+                if score > best_score:
+                    best_score = score
+                    best_vel   = vel_cand
+
+        return best_vel
+
+
+# ════════════════════════════════════════════════════
+#  MPC — Model Predictive Control
+#  Plans N-step optimal control sequence over a horizon,
+#  accounting for predicted obstacle positions.
+#  Minimizes: Σ (dist_to_goal + obstacle_penalty + control_effort)
+# ════════════════════════════════════════════════════
+class MPC:
+    def __init__(self, horizon=6, dt=0.1):
+        self.N  = horizon   # prediction steps
+        self.dt = dt
+        self.max_speed  = 2.5
+        self.max_accel  = 2.5
+        self.n_rollouts = 60     # random control rollouts (sampling MPC)
+
+        # Cost weights
+        self.Q_goal  = 2.0    # distance to goal at end of horizon
+        self.Q_obs   = 5.0    # obstacle proximity penalty
+        self.Q_ctrl  = 0.3    # control effort
+        self.Q_smooth= 0.4    # smoothness (jerk penalty)
+
+    def optimize(self, drone_pos, drone_vel, goal,
+                 predicted_obstacles, static_obs):
+        """
+        predicted_obstacles: list per step of [(pos, r), ...]
+            (length = self.N, each entry = all obstacles at step k)
+
+        Returns: best_vel: np.array(3) — first control action of optimal sequence
+        """
+        best_cost = 1e9
+        best_vel  = drone_vel.copy()
+        cur_speed = np.linalg.norm(drone_vel)
+
+        for _ in range(self.n_rollouts):
+            # Sample a control sequence: N random velocities
+            controls = []
+            v_prev = drone_vel.copy()
+            for k in range(self.N):
+                # Random perturbation within dynamic window
+                dv = np.random.randn(3) * self.max_accel * self.dt
+                v_cand = np.clip(v_prev + dv, -self.max_speed, self.max_speed)
+                # Squash speed
+                spd = np.linalg.norm(v_cand)
+                if spd > self.max_speed:
+                    v_cand *= self.max_speed / spd
+                controls.append(v_cand)
+                v_prev = v_cand
+
+            # Rollout
+            pos  = drone_pos.copy()
+            cost = 0.0
+            ok   = True
+
+            for k, v_cmd in enumerate(controls):
+                pos = pos + v_cmd * self.dt
+
+                # Obstacle costs at step k
+                obs_at_k = predicted_obstacles[min(k, len(predicted_obstacles)-1)]
+                for (opos, or_) in obs_at_k:
+                    d = np.linalg.norm(pos - opos) - or_
+                    if d < 0.2:
+                        ok = False; break
+                    cost += self.Q_obs * max(0, 1.5 - d)   # penalty within 1.5m
+
+                if not ok: break
+
+                # Static obstacles
+                for (cx, cy, r, h) in static_obs:
+                    d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
+                    if d < 0.2:
+                        ok = False; break
+                    cost += self.Q_obs * max(0, 1.2 - d)
+                if not ok: break
+
+                # Control effort
+                cost += self.Q_ctrl * np.linalg.norm(v_cmd)**2
+
+                # Smoothness
+                if k > 0:
+                    cost += self.Q_smooth * np.linalg.norm(v_cmd - controls[k-1])
+
+            if not ok:
+                continue   # skip colliding rollouts
+
+            # Terminal cost: distance to goal
+            cost += self.Q_goal * np.linalg.norm(pos - goal)
+
+            if cost < best_cost:
+                best_cost = cost
+                best_vel  = controls[0]  # first action in best sequence
+
+        return best_vel
 
 # ════════════════════════════════════════════════════
 #  PID CONTROLLER WITH ANTI-WINDUP
@@ -885,7 +1102,7 @@ def run_engine():
     """Run physics simulation and collect history. No GUI in this thread."""
     print("═"*60)
     print("  GPS-DENIED DRONE NAVIGATION — ADVANCED SYSTEM")
-    print("  PRM + Theta* + Bidirectional A* + D* Lite + JPS + PID + Potential Field")
+    print("  PRM + Theta* + BiDir-A* + D* Lite + JPS + DWA + MPC + PID + PF")
     print("═"*60)
 
     t = 0.0
@@ -948,6 +1165,11 @@ def run_engine():
     print("► Simulation running... (sending telemetry on TELEMETRY_Q)")
     print("  Run `python drone_telemetry_cmd.py` in another terminal!\n")
 
+    # ── Smart Brain: Predictive Avoidance ──────────────
+    obs_predictor = ObstaclePredictor(DYNAMIC_OBSTACLES)
+    dwa_planner   = DWA()
+    mpc_planner   = MPC(horizon=6, dt=0.1)
+
     pos_pid.reset(); vel_pid.reset()
 
     history = {
@@ -963,78 +1185,50 @@ def run_engine():
         'lidar':   [[]],
         'min_dist':[10.0],
         'pot_force':[np.zeros(3)],
-        'popups':  [[]],   # list of active popup (cx,cy,r,h) per frame
         'metrics': [metrics.score()],
     }
 
-    REPLAN_INTERVAL = 10   # steps between D* Lite replans (slow planner, ~1 Hz at dt=0.1)
-    FAST_REFLEX_HZ  = 20   # reflex sub-checks per second
-    REFLEX_TICKS    = max(1, int(1.0 / (FAST_REFLEX_HZ * dt)))  # steps per reflex tick = 1
+    REPLAN_INTERVAL = 8  # steps between D* replans
     PFIELD_WEIGHT   = 0.5
     MAX_STEPS       = 600
-    popup_fired     = set()  # track which popups already announced
-    replan_cooldown = 0      # steps remaining before another JPS/Theta* replan is allowed
 
     for step in range(MAX_STEPS):
         t += dt
         # Dynamic obstacle positions
         dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
-        # ── POP-UP OBSTACLE SPAWN CHECK ─────────────────────
-        for (pcx, pcy, pr, ph, spawn_step) in POPUP_OBSTACLES:
-            if step == spawn_step:
-                active_popups.append((pcx, pcy, pr, ph))
-                popup_id = spawn_step
-                if popup_id not in popup_fired:
-                    popup_fired.add(popup_id)
-                    print(f"\n⚡ POPUP OBSTACLE SPAWNED at step {step}! "
-                          f"({pcx:.1f}, {pcy:.1f}) r={pr}m — "
-                          f"LiDAR reflexes FIRING (20Hz)!")
-
-        # Merge active popups into STATIC_OBSTACLES for this step
-        all_obstacles = STATIC_OBSTACLES + active_popups
-
-        # ══ FAST LAYER: LiDAR reflex (20Hz) ════════════════─
         # Sensor: lidar, IMU, barometer
-        # This runs EVERY STEP (dt=0.05s → 20Hz) — drone's instant reflexes
         lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
 
-        # Obstacle distance using ALL obstacles (including popups)
+        # ── Smart Brain: Update predictor ────────────
+        obs_predictor.update(t)
+        # Predict 6 steps ahead for MPC
+        preds_per_obs = obs_predictor.predict(t, 6, dt)  # [obs][step] → (pos,r)
+        # Reformat to [step][obs_list] for MPC
+        mpc_pred = []
+        for k in range(6):
+            step_obs = [(preds_per_obs[i][k][0], preds_per_obs[i][k][1])
+                        for i in range(len(DYNAMIC_OBSTACLES))]
+            mpc_pred.append(step_obs)
+        # 1-step ahead prediction for DWA
+        dwa_pred = [(preds_per_obs[i][0][0], preds_per_obs[i][0][1])
+                    for i in range(len(DYNAMIC_OBSTACLES))]
+
+        # Obstacle distance (for potential field & metrics)
         min_d = obstacle_distance(drone_pos, dyn_cur)
-        # Also factor in static + popup proximity for realistic LiDAR
-        for (pcx, pcy, pr, ph) in active_popups:
-            d_popup = max(0.01, math.sqrt((drone_pos[0]-pcx)**2 + (drone_pos[1]-pcy)**2) - pr)
-            min_d = min(min_d, d_popup)
 
-        # ── Potential Field (uses ALL obstacles) ──────
+        # ── Potential Field ──────────────────────────
         pf_force = potential_force(drone_pos, GOAL, dyn_cur)
-        # Extra repulsion from popup obstacles (LiDAR-detected)
-        for (pcx, pcy, pr, ph) in active_popups:
-            pp = np.array([pcx, pcy, drone_pos[2]])
-            diff = drone_pos - pp
-            d = max(0.01, np.linalg.norm(diff) - pr)
-            if d < RHO_0:
-                pf_force += K_REP * (1/d - 1/RHO_0) * (1/d**2) * (diff/(d+pr))
 
-        # ── Path blockage check (fast 20Hz) ───────────
-        # Checks dynamic + popup obstacles (slow planner doesn't know about popups yet)
-        # Check blockage from both dynamic AND popup obstacles
+        # ── Check path blockage ──────────────────────
         blocked = False
         if active_path:
             for wp in active_path[:5]:
                 for (dpos, dr) in dyn_cur:
                     if np.linalg.norm(np.array(wp)-dpos) < dr + INFLATION_RADIUS:
                         blocked = True; break
-                # Also check popup obstacles
-                for (pcx, pcy, pr, ph) in active_popups:
-                    wp_a = np.array(wp)
-                    if math.sqrt((wp_a[0]-pcx)**2+(wp_a[1]-pcy)**2) < pr + INFLATION_RADIUS:
-                        blocked = True
-                        print(f"   [REFLEX 20Hz] Step {step}: popup obstacle blocks waypoint! "
-                              f"JPS replanning NOW...")
-                        break
                 if blocked: break
 
         did_replan   = False
@@ -1057,21 +1251,9 @@ def run_engine():
                     active_path = new_path
                     did_replan  = True
 
-        # ══ SLOW LAYER: D* Lite path replanner (~1Hz) ══════════─
-        # Runs every REPLAN_INTERVAL steps (10 * 0.1s = 1 second)
-        # Bakes popup obstacles into the voxel grid and replans globally
+        # ── D* Lite periodic replan ──────────────────
         if step % REPLAN_INTERVAL == 0:
-            # Rebuild grid with CURRENT popup obstacles baked in
             grid_new = get_grid(dyn_cur)
-            # Mark popup voxels as occupied
-            for (pcx, pcy, pr, ph) in active_popups:
-                infl = pr + INFLATION_RADIUS
-                for ix in range(NX):
-                    for iy in range(NY):
-                        wx, wy = -WORLD_XY + ix*VOXEL_RES, -WORLD_XY + iy*VOXEL_RES
-                        if math.sqrt((wx-pcx)**2+(wy-pcy)**2) < infl:
-                            nz_top = min(NZ-1, int(ph/VOXEL_RES))
-                            grid_new[ix, iy, :nz_top+1] = True
             dstar.update_grid(grid_new, w2v(drone_pos))
             dstar.compute(max_iter=5000)
             dstar_wp = dstar.extract_path()
@@ -1093,6 +1275,19 @@ def run_engine():
 
         # Cascaded PID (position → desired_vel)
         vel_cmd = pos_pid.step(wp_error, dt)
+
+        # ── SMART BRAIN: DWA + MPC velocity override ─
+        # When any obstacle is within 2.5m, engage DWA+MPC for predictive avoidance
+        if min_d < 2.5:
+            # DWA: samples velocity space with predicted obstacle positions
+            dwa_vel = dwa_planner.compute(drone_pos, drone_vel, GOAL,
+                                          dwa_pred, STATIC_OBSTACLES)
+            # MPC: optimises N-step trajectory over predicted future
+            mpc_vel = mpc_planner.optimize(drone_pos, drone_vel, GOAL,
+                                           mpc_pred, STATIC_OBSTACLES)
+            # Blend: 40% PID direction + 30% DWA + 30% MPC
+            # (PID keeps goal-seeking, DWA/MPC ensure obstacle clearance)
+            vel_cmd = 0.4 * vel_cmd + 0.3 * dwa_vel + 0.3 * mpc_vel
 
         # Add potential field correction heavily to ensure it NEVER crosses constraints
         if np.linalg.norm(pf_force) > 0.01:
@@ -1176,7 +1371,6 @@ def run_engine():
         history['min_dist'].append(min_d)
         history['pot_force'].append(pf_force.copy())
         history['metrics'].append(metrics.score())
-        history['popups'].append(list(active_popups))  # snapshot of spawned popups
 
         if np.linalg.norm(drone_pos-GOAL) < 0.45:
             print(f"\n✅ GOAL REACHED at step {step} (t={t:.1f}s)")
@@ -1303,8 +1497,6 @@ def launch_animation(history):
     for c in top_dyncs: axtop.add_patch(c)
     top_fov   = plt.Circle((0,0), 3.0, color='#00E5FF', fill=False, ls=':', lw=1, alpha=0.4)
     axtop.add_patch(top_fov)
-    # Popup obstacle patches (hidden until spawned, drawn per-frame)
-    popup_top_rings = []  # will be created dynamically in animate()
 
     # ── Potential Field Gauge ──────────────────────────
     axpot.set_facecolor('#0D1117')
@@ -1356,17 +1548,6 @@ def launch_animation(history):
         for j,dp in enumerate(dyn):
             dyn3d_scats[j]._offsets3d = ([dp[0]],[dp[1]],[dp[2]])
 
-        # ── Draw popup obstacles (bright red, appear when spawned) ──
-        popups_this = history['popups'][i] if 'popups' in history else []
-        for (pcx, pcy, pr, ph) in popups_this:
-            theta_ring = np.linspace(0, 2*np.pi, 20)
-            for z_level in np.linspace(0, ph, 6):
-                ax3d.plot(pcx + pr*np.cos(theta_ring),
-                          pcy + pr*np.sin(theta_ring),
-                          [z_level]*20, color='#FF1744', lw=1.5, alpha=0.85)
-            ax3d.plot([pcx],[pcy],[ph/2], 's', color='#FF1744', ms=8,
-                      label='⚡ Popup' if i==0 else '')
-
         # Top-down
         hw=3.0
         axtop.set_xlim(pos[0]-hw, pos[0]+hw); axtop.set_ylim(pos[1]-hw, pos[1]+hw)
@@ -1377,23 +1558,6 @@ def launch_animation(history):
             top_plan.set_color('#FF5252' if (repl or dsr) else '#FFF176')
         for j,dp in enumerate(dyn): top_dyncs[j].center=(dp[0],dp[1])
         top_fov.center=(pos[0],pos[1])
-
-        # ── Popup circles in top-down view ──────────────────
-        # Remove old popup patches and redraw current ones
-        for p in popup_top_rings:
-            try: p.remove()
-            except: pass
-        popup_top_rings.clear()
-        for (pcx, pcy, pr, ph) in popups_this:
-            c_fill = plt.Circle((pcx, pcy), pr, color='#FF1744', alpha=0.7)
-            c_ring = plt.Circle((pcx, pcy), pr+INFLATION_RADIUS, color='#FF1744',
-                                fill=False, ls='--', lw=1.5, alpha=0.9)
-            axtop.add_patch(c_fill)
-            axtop.add_patch(c_ring)
-            popup_top_rings.append(c_fill)
-            popup_top_rings.append(c_ring)
-            axtop.text(pcx, pcy+pr+0.3, '⚡POPUP', color='#FF1744', fontsize=6,
-                       ha='center', va='bottom', fontweight='bold')
 
         # Potential field arrow
         pf_n = np.linalg.norm(pf_f)+1e-9
