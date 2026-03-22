@@ -54,12 +54,9 @@ VOXEL_RES  = 0.4     # voxel edge length (increased for speed)
 START = np.array([-5.0, -4.0, 1.0])
 GOAL  = np.array([ 5.0,  4.0, 2.5])
 
-# Wind / disturbance model
-WIND_ENABLED   = True
-WIND_MEAN      = np.array([0.15, 0.10, 0.0])  # mean wind vector (m/s)
-WIND_SIGMA     = 0.08                          # Gaussian gust noise std (m/s)
-
 INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
+
+# Static Nature: (cx, cy, radius, height)
 TREES = [
     (-3.5,  2.0, 0.55, 3.2),
     (-2.0, -3.0, 0.45, 2.5),
@@ -270,61 +267,51 @@ class DWA:
 
             for ti in range(self.theta_samples):
                 angle = 2 * math.pi * ti / self.theta_samples
+                # Direction in XY plane, keep Z from PID
                 dx = math.cos(angle)
                 dy = math.sin(angle)
+                dz = (goal[2] - drone_pos[2]) * 0.3  # soft altitude push
+                direction = np.array([dx, dy, dz])
+                direction /= (np.linalg.norm(direction) + 1e-6)
+                vel_cand = direction * v_mag
 
-                # ── ORANGE FIX: Z velocity samples (was XY-only) ────────────────────
-                # Now samples 5 Z elevations: -0.3, -0.15, 0, +0.15, +0.3 m/s
-                goal_dz_soft = (goal[2] - drone_pos[2]) * 0.3
-                z_samples = [
-                    goal_dz_soft - 0.3,
-                    goal_dz_soft - 0.15,
-                    goal_dz_soft,
-                    goal_dz_soft + 0.15,
-                    goal_dz_soft + 0.3,
-                ]
-                for dz in z_samples:
-                    direction = np.array([dx, dy, dz])
-                    direction /= (np.linalg.norm(direction) + 1e-6)
-                    vel_cand = direction * v_mag
+                # Simulate trajectory
+                pos = drone_pos.copy()
+                min_clearance = 1e9
+                collided = False
+                for step in range(int(self.sim_time / self.dt_sim)):
+                    pos = pos + vel_cand * self.dt_sim
+                    # Check static obstacles
+                    for (cx, cy, r, h) in static_obs:
+                        d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
+                        if d < 0.3:
+                            collided = True; break
+                        min_clearance = min(min_clearance, d)
+                    if collided: break
+                    # Check predicted dynamic obstacles
+                    for (dpos, dr) in dyn_cur_pred:
+                        d = np.linalg.norm(pos - dpos) - dr
+                        if d < 0.3:
+                            collided = True; break
+                        min_clearance = min(min_clearance, d)
+                    if collided: break
 
-                    # Simulate trajectory
-                    pos = drone_pos.copy()
-                    min_clearance = 1e9
-                    collided = False
-                    for step in range(int(self.sim_time / self.dt_sim)):
-                        pos = pos + vel_cand * self.dt_sim
-                        # Check static obstacles
-                        for (cx, cy, r, h) in static_obs:
-                            d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
-                            if d < 0.3:
-                                collided = True; break
-                            min_clearance = min(min_clearance, d)
-                        if collided: break
-                        # Check predicted dynamic obstacles
-                        for (dpos, dr) in dyn_cur_pred:
-                            d = np.linalg.norm(pos - dpos) - dr
-                            if d < 0.3:
-                                collided = True; break
-                            min_clearance = min(min_clearance, d)
-                        if collided: break
+                if collided: continue
 
-                    if collided: continue
+                # Score this trajectory
+                to_goal = goal - pos
+                dist    = np.linalg.norm(to_goal)
+                heading_score   = 1.0 / (dist + 0.01)
+                clearance_score = min(1.0, min_clearance / 2.0)
+                speed_score     = v_mag / self.max_speed
 
-                    # Score this trajectory
-                    to_goal = goal - pos
-                    dist    = np.linalg.norm(to_goal)
-                    heading_score   = 1.0 / (dist + 0.01)
-                    clearance_score = min(1.0, min_clearance / 2.0)
-                    speed_score     = v_mag / self.max_speed
+                score = (self.w_heading   * heading_score +
+                         self.w_clearance * clearance_score +
+                         self.w_speed     * speed_score)
 
-                    score = (self.w_heading   * heading_score +
-                             self.w_clearance * clearance_score +
-                             self.w_speed     * speed_score)
-
-                    if score > best_score:
-                        best_score = score
-                        best_vel   = vel_cand
+                if score > best_score:
+                    best_score = score
+                    best_vel   = vel_cand
 
         return best_vel
 
@@ -420,124 +407,6 @@ class MPC:
                 best_vel  = controls[0]  # first action in best sequence
 
         return best_vel
-
-# ════════════════════════════════════════════════════
-#  LOOP CLOSURE & RELOCALISATION
-#  ┌─────────────────────────────────────────────────┐
-#  │  Jab drone same jagah dubara aata hai:          │
-#  │  1. Lidar scan fingerprint → keyframe DB mein   │
-#  │     compare karo (cosine similarity)            │
-#  │  2. Match milne pe: "yeh jagah pehle dekhi hai" │
-#  │  3. Drift = (true_pos - estimated_pos) correct  │
-#  │  4. Map accurate rehta hai (no drift)           │
-#  └─────────────────────────────────────────────────┘
-# ════════════════════════════════════════════════════
-class LoopClosure:
-    """Scan-based loop closure detector with drift correction.
-
-    Each keyframe stores:
-      - world position (cx, cy, cz)
-      - lidar range histogram fingerprint (normalised)
-
-    Detection: cosine similarity of fingerprints.
-    Correction: weighted linear blend of pose correction vector
-                applied to the drone's drift accumulator.
-    """
-    FINGERPRINT_BINS = 16   # histogram bins for range fingerprint
-    MATCH_THRESHOLD  = 0.88 # cosine similarity threshold for loop closure
-    MIN_KEYFRAME_DIST= 1.2  # don't add a new keyframe within this radius
-
-    def __init__(self):
-        self.keyframes = []          # list of (pos, fingerprint)
-        self.drift     = np.zeros(3) # accumulated drift correction
-        self.closures  = []          # log: (step, match_idx, correction)
-
-    # ── Fingerprint generation ───────────────────────
-    def _fingerprint(self, lidar_hits, drone_pos):
-        """Convert lidar hits to a normalised range histogram.
-        Returns zero-vector if no lidar hits (nothing to fingerprint).
-        """
-        if not lidar_hits:
-            return np.zeros(self.FINGERPRINT_BINS)
-        ranges = [np.linalg.norm(np.array(h) - drone_pos) for h in lidar_hits]
-        max_r  = max(ranges) if ranges else 1.0
-        hist   = np.zeros(self.FINGERPRINT_BINS)
-        for r in ranges:
-            idx = min(int(r / (max_r + 1e-6) * self.FINGERPRINT_BINS),
-                      self.FINGERPRINT_BINS - 1)
-            hist[idx] += 1.0
-        norm = np.linalg.norm(hist)
-        return hist / (norm + 1e-9)
-
-    def _cosine_sim(self, a, b):
-        """Cosine similarity between two fingerprint vectors."""
-        denom = (np.linalg.norm(a) * np.linalg.norm(b)) + 1e-9
-        return float(np.dot(a, b) / denom)
-
-    # ── Add keyframe ─────────────────────────────────
-    def add_keyframe(self, drone_pos, lidar_hits):
-        """Add current position as a keyframe if far enough from existing ones."""
-        for (kp, _) in self.keyframes:
-            if np.linalg.norm(drone_pos - kp) < self.MIN_KEYFRAME_DIST:
-                return False  # too close to existing keyframe
-        fp = self._fingerprint(lidar_hits, drone_pos)
-        if np.linalg.norm(fp) < 1e-6:
-            return False       # empty scan, skip
-        self.keyframes.append((drone_pos.copy(), fp))
-        return True
-
-    # ── Check for loop closure ────────────────────────
-    def check(self, drone_pos, lidar_hits, step):
-        """Compare current scan to all keyframes.
-        Returns (matched, correction_vector, match_info_str).
-        correction_vector: delta to apply to drone_pos to reduce drift.
-        """
-        if len(self.keyframes) < 3:
-            return False, np.zeros(3), ""
-
-        fp_cur = self._fingerprint(lidar_hits, drone_pos)
-        if np.linalg.norm(fp_cur) < 1e-6:
-            return False, np.zeros(3), ""
-
-        best_sim = -1.0
-        best_idx = -1
-        for i, (kp, kfp) in enumerate(self.keyframes):
-            # Only compare with keyframes that are spatially nearby
-            # (we don't expect closure from the other side of the world)
-            if np.linalg.norm(drone_pos - kp) > 3.5:
-                continue
-            sim = self._cosine_sim(fp_cur, kfp)
-            if sim > best_sim:
-                best_sim = sim
-                best_idx  = i
-
-        if best_idx < 0 or best_sim < self.MATCH_THRESHOLD:
-            return False, np.zeros(3), ""
-
-        # Loop closure detected!
-        matched_pos = self.keyframes[best_idx][0]
-        # Correction: move estimated position toward the remembered position
-        correction  = (matched_pos - drone_pos) * 0.3   # soft correction (30%)
-        self.drift  += correction
-        self.closures.append((step, best_idx, correction.copy()))
-
-        info = (f"LOOP CLOSURE @step={step} | sim={best_sim:.3f} | "
-                f"drift-fix={np.linalg.norm(correction):.2f}m "
-                f"← matched keyframe #{best_idx} @ {matched_pos.round(1)}")
-        return True, correction, info
-
-    # ── Apply correction to position ──────────────────
-    def apply(self, drone_pos, correction):
-        """Apply the correction vector to the drone position estimate."""
-        return drone_pos + correction
-
-    @property
-    def n_closures(self):
-        return len(self.closures)
-
-    @property
-    def total_drift_corrected(self):
-        return float(np.linalg.norm(self.drift))
 
 # ════════════════════════════════════════════════════
 #  PID CONTROLLER WITH ANTI-WINDUP
@@ -1174,22 +1043,6 @@ class SensorSuite:
                 if hit_dyn: break
             else:
                 beams.append((angle, self.lidar_range, False))
-
-        # ── RED FIX: Downward lidar beam (AGL altitude) ────────────────
-        # Fires straight down to measure height above ground level.
-        # Uses angle=float('nan') as marker for the downward beam.
-        agl = float('nan')
-        for dist in np.linspace(0.05, pos[2], 20):
-            p_down = pos - np.array([0.0, 0.0, dist])
-            v_down = w2v(p_down)
-            if not (0<=v_down[0]<NX and 0<=v_down[1]<NY and 0<=v_down[2]<NZ):
-                agl = dist; break
-            if STATIC_GRID[v_down]:
-                agl = dist; break
-        else:
-            agl = pos[2]   # no hit — ground at Z=0
-        beams.append((float('nan'), agl, True))  # (angle=NaN, agl_distance, downward)
-
         return beams
 
 sensors = SensorSuite()
@@ -1316,7 +1169,6 @@ def run_engine():
     obs_predictor = ObstaclePredictor(DYNAMIC_OBSTACLES)
     dwa_planner   = DWA()
     mpc_planner   = MPC(horizon=6, dt=0.1)
-    loop_closure  = LoopClosure()   # Relocalisation / drift correction
 
     pos_pid.reset(); vel_pid.reset()
 
@@ -1346,25 +1198,9 @@ def run_engine():
         dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
         # Sensor: lidar, IMU, barometer
-        lidar_all = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
-        # Separate downward AGL beam (angle=NaN) from horizontal beams
-        lidar_horiz = [b for b in lidar_all if not math.isnan(b[0])]
-        agl_beam    = next((b for b in lidar_all if math.isnan(b[0])), None)
-        agl_dist    = agl_beam[1] if agl_beam else drone_pos[2]
-        lidar = lidar_horiz   # alias used everywhere below
+        lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
-
-
-        # ── LOOP CLOSURE & RELOCALISATION ────────────
-        # Every 10 steps: add current pose as a keyframe
-        if step % 10 == 0:
-            loop_closure.add_keyframe(drone_pos, lidar)
-        # Every step: check if we've been here before
-        lc_detected, lc_correction, lc_info = loop_closure.check(drone_pos, lidar, step)
-        if lc_detected:
-            drone_pos = loop_closure.apply(drone_pos, lc_correction)
-            print(f"  🔄 {lc_info}")
 
         # ── Smart Brain: Update predictor ────────────
         obs_predictor.update(t)
@@ -1415,35 +1251,23 @@ def run_engine():
                     active_path = new_path
                     did_replan  = True
 
-        # ── D* Lite periodic replan ──────────────────────────────
-        # Only overwrite the active_path when:
-        #   (a) the current path is blocked, OR
-        #   (b) D* finds a strictly shorter path (avoids reset loop)
+        # ── D* Lite periodic replan ──────────────────
         if step % REPLAN_INTERVAL == 0:
             grid_new = get_grid(dyn_cur)
             dstar.update_grid(grid_new, w2v(drone_pos))
             dstar.compute(max_iter=5000)
             dstar_wp = dstar.extract_path()
+            # Blend D* hint into waypoints
             if dstar_wp and len(dstar_wp) > 1:
-                # Path length comparison: only adopt if shorter than remaining
-                remaining_len = sum(
-                    np.linalg.norm(np.array(active_path[i+1]) - np.array(active_path[i]))
-                    for i in range(len(active_path)-1)
-                ) if len(active_path) > 1 else 1e9
-                dstar_len = sum(
-                    np.linalg.norm(np.array(dstar_wp[i+1]) - np.array(dstar_wp[i]))
-                    for i in range(len(dstar_wp)-1)
-                )
-                if blocked or dstar_len < remaining_len * 0.85:  # 15% improvement threshold
-                    active_path = dstar_wp
-                    did_dstar_rp = True
+                active_path = dstar_wp
+                did_dstar_rp = True
 
         # ── Follow active path ───────────────────────
         if not active_path:
             active_path = [GOAL.copy()]
 
-        # Pop waypoints the drone has reached (looser = 0.5 m so progress isn't stalled)
-        while len(active_path) > 1 and np.linalg.norm(drone_pos - np.array(active_path[0])) < 0.5:
+        # Skip waypoints already passed
+        while len(active_path)>1 and np.linalg.norm(drone_pos-np.array(active_path[0]))<0.35:
             active_path.pop(0)
 
         target_wp = np.array(active_path[0])
@@ -1507,14 +1331,6 @@ def run_engine():
         accel = vel_pid.step(vel_error, dt)
 
         drone_vel = drone_vel + accel * dt
-
-        # ── RED FIX: Wind disturbance model ───────────────────────────────────
-        # Applies mean wind vector + per-step Gaussian gusts to velocity.
-        # This creates a realistic disturbance that PID must compensate.
-        if WIND_ENABLED:
-            gust = np.random.randn(3) * WIND_SIGMA
-            drone_vel += (WIND_MEAN + gust) * dt
-
         drone_pos = drone_pos + drone_vel * dt
         drone_pos[2] = max(0.3, min(WORLD_Z-0.2, drone_pos[2]))
 

@@ -1,13 +1,11 @@
 import math
-import struct
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, PointCloud2
-from sensor_msgs_py import point_cloud2 as pc2
 from std_msgs.msg import Bool, Float32
 
 
@@ -86,14 +84,11 @@ class ObstacleAvoidance3D(Node):
                 min_dist = min(ranges)
                 detected = min_dist < self.obstacle_threshold
 
-        # 3D point cloud processing — real implementation
+        # 3D point cloud processing (if available)
         if self.last_pointcloud is not None and self.use_3d:
-            pts = self._parse_pointcloud(self.last_pointcloud)
-            if pts:
-                dists_3d = [math.sqrt(x*x + y*y + z*z) for (x, y, z) in pts]
-                closest_3d = min(dists_3d)
-                min_dist = min(min_dist, closest_3d)
-                detected = detected or (closest_3d < self.obstacle_threshold)
+            # Would parse point cloud and compute distances
+            # For now, simplified: use closest point
+            pass
 
         # Compute avoidance command
         cmd = Twist()
@@ -113,79 +108,41 @@ class ObstacleAvoidance3D(Node):
 
         self._publish_state(detected, cmd, min_dist)
 
-    def _parse_pointcloud(self, cloud: PointCloud2) -> List[Tuple[float, float, float]]:
-        """Parse PointCloud2 msg into list of (x, y, z) float tuples.
-        Handles the common XYZ32 format (3×float32 per point).
-        Falls back to sensor_msgs_py if available.
-        """
-        points: List[Tuple[float, float, float]] = []
-        try:
-            # Fast path: use sensor_msgs_py helper
-            for p in pc2.read_points(cloud, field_names=('x', 'y', 'z'), skip_nans=True):
-                points.append((float(p[0]), float(p[1]), float(p[2])))
-        except Exception:
-            # Manual fallback: parse raw bytes (assumes XYZI or XYZ float32)
-            point_step = cloud.point_step
-            data = cloud.data
-            for i in range(cloud.width * cloud.height):
-                offset = i * point_step
-                if offset + 12 > len(data):
-                    break
-                x, y, z = struct.unpack_from('fff', data, offset)
-                if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
-                    points.append((x, y, z))
-        return points
-
     def _compute_potential_field(self) -> Tuple[float, float, float]:
-        """Compute full 3D potential field from all obstacle sources.
-
-        Sources:
-          • 2D lidar (XY repulsion + tangential)
-          • 3D point cloud (XYZ repulsion — including Z-axis)
-
+        """Compute 3D potential field from obstacles.
+        
         Returns:
             (fx, fy, fz) repulsive force components
         """
         rep_x = 0.0
         rep_y = 0.0
-        rep_z = 0.0  # NOW COMPUTED — no longer always 0.0
+        rep_z = 0.0
 
-        # ── 2D Lidar: XY repulsion + tangential ──────
         if self.last_scan is not None:
+            # 2D lidar to 3D (assume horizontal scan)
             for i, distance in enumerate(self.last_scan.ranges):
                 if not math.isfinite(distance):
                     continue
                 if distance > self.influence_distance:
                     continue
 
+                # Compute bearing angle
                 angle = self.last_scan.angle_min + i * self.last_scan.angle_increment
+
+                # Repulsive strength (inverse distance falloff)
                 strength = self.repulsive_gain * (
                     1.0 / max(distance, 0.05) - 1.0 / self.influence_distance
                 )
                 strength = max(0.0, strength)
 
+                # Repulsive force (push away from obstacle)
                 rep_x -= strength * math.cos(angle)
                 rep_y -= strength * math.sin(angle)
-                # Tangential component
-                rep_x += -self.tangential_gain * strength * math.sin(angle)
-                rep_y +=  self.tangential_gain * strength * math.cos(angle)
 
-        # ── 3D Point Cloud: full XYZ repulsion ───────
-        # This is what was previously `# pass` — now fully implemented.
-        if self.last_pointcloud is not None and self.use_3d:
-            pts = self._parse_pointcloud(self.last_pointcloud)
-            for (x, y, z) in pts:
-                dist3 = math.sqrt(x*x + y*y + z*z)
-                if dist3 < 1e-4 or dist3 > self.influence_distance:
-                    continue
-                strength = self.repulsive_gain * (
-                    1.0 / max(dist3, 0.05) - 1.0 / self.influence_distance
-                )
-                strength = max(0.0, strength)
-                # Push away from the point in 3D (including Z!)
-                rep_x -= strength * (x / dist3)
-                rep_y -= strength * (y / dist3)
-                rep_z -= strength * (z / dist3)   # ← Z repulsion: drone pushed up/down
+                # Tangential force (encourage circular motion around obstacle)
+                tangential = self.tangential_gain * strength
+                rep_x += -tangential * math.sin(angle)
+                rep_y += tangential * math.cos(angle)
 
         return rep_x, rep_y, rep_z
 
