@@ -963,6 +963,7 @@ def run_engine():
         'lidar':   [[]],
         'min_dist':[10.0],
         'pot_force':[np.zeros(3)],
+        'popups':  [[]],   # list of active popup (cx,cy,r,h) per frame
         'metrics': [metrics.score()],
     }
 
@@ -972,6 +973,7 @@ def run_engine():
     PFIELD_WEIGHT   = 0.5
     MAX_STEPS       = 600
     popup_fired     = set()  # track which popups already announced
+    replan_cooldown = 0      # steps remaining before another JPS/Theta* replan is allowed
 
     for step in range(MAX_STEPS):
         t += dt
@@ -1174,6 +1176,7 @@ def run_engine():
         history['min_dist'].append(min_d)
         history['pot_force'].append(pf_force.copy())
         history['metrics'].append(metrics.score())
+        history['popups'].append(list(active_popups))  # snapshot of spawned popups
 
         if np.linalg.norm(drone_pos-GOAL) < 0.45:
             print(f"\n✅ GOAL REACHED at step {step} (t={t:.1f}s)")
@@ -1300,6 +1303,8 @@ def launch_animation(history):
     for c in top_dyncs: axtop.add_patch(c)
     top_fov   = plt.Circle((0,0), 3.0, color='#00E5FF', fill=False, ls=':', lw=1, alpha=0.4)
     axtop.add_patch(top_fov)
+    # Popup obstacle patches (hidden until spawned, drawn per-frame)
+    popup_top_rings = []  # will be created dynamically in animate()
 
     # ── Potential Field Gauge ──────────────────────────
     axpot.set_facecolor('#0D1117')
@@ -1351,6 +1356,17 @@ def launch_animation(history):
         for j,dp in enumerate(dyn):
             dyn3d_scats[j]._offsets3d = ([dp[0]],[dp[1]],[dp[2]])
 
+        # ── Draw popup obstacles (bright red, appear when spawned) ──
+        popups_this = history['popups'][i] if 'popups' in history else []
+        for (pcx, pcy, pr, ph) in popups_this:
+            theta_ring = np.linspace(0, 2*np.pi, 20)
+            for z_level in np.linspace(0, ph, 6):
+                ax3d.plot(pcx + pr*np.cos(theta_ring),
+                          pcy + pr*np.sin(theta_ring),
+                          [z_level]*20, color='#FF1744', lw=1.5, alpha=0.85)
+            ax3d.plot([pcx],[pcy],[ph/2], 's', color='#FF1744', ms=8,
+                      label='⚡ Popup' if i==0 else '')
+
         # Top-down
         hw=3.0
         axtop.set_xlim(pos[0]-hw, pos[0]+hw); axtop.set_ylim(pos[1]-hw, pos[1]+hw)
@@ -1361,6 +1377,23 @@ def launch_animation(history):
             top_plan.set_color('#FF5252' if (repl or dsr) else '#FFF176')
         for j,dp in enumerate(dyn): top_dyncs[j].center=(dp[0],dp[1])
         top_fov.center=(pos[0],pos[1])
+
+        # ── Popup circles in top-down view ──────────────────
+        # Remove old popup patches and redraw current ones
+        for p in popup_top_rings:
+            try: p.remove()
+            except: pass
+        popup_top_rings.clear()
+        for (pcx, pcy, pr, ph) in popups_this:
+            c_fill = plt.Circle((pcx, pcy), pr, color='#FF1744', alpha=0.7)
+            c_ring = plt.Circle((pcx, pcy), pr+INFLATION_RADIUS, color='#FF1744',
+                                fill=False, ls='--', lw=1.5, alpha=0.9)
+            axtop.add_patch(c_fill)
+            axtop.add_patch(c_ring)
+            popup_top_rings.append(c_fill)
+            popup_top_rings.append(c_ring)
+            axtop.text(pcx, pcy+pr+0.3, '⚡POPUP', color='#FF1744', fontsize=6,
+                       ha='center', va='bottom', fontweight='bold')
 
         # Potential field arrow
         pf_n = np.linalg.norm(pf_f)+1e-9
