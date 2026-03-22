@@ -445,6 +445,245 @@ pos_pid = PIDController(kp=2.2, ki=0.15, kd=0.8, limit=3.0, windup_limit=2.0)
 vel_pid = PIDController(kp=1.5, ki=0.05, kd=0.4, limit=5.0, windup_limit=1.5)
 
 # ════════════════════════════════════════════════════
+#  UNSCENTED KALMAN FILTER (UKF) — State Estimator
+#
+#  State vector:  x = [x, y, z, vx, vy, vz]  (6D)
+#  Process model: constant-velocity + IMU acceleration input
+#  Sensors:
+#    - IMU (accel)          → prediction input
+#    - Optical Flow (vx,vy) → velocity XY observation
+#    - Barometer (z)        → altitude observation
+#
+#  Scaled Unscented Transform parameters:
+#    alpha = 0.1  (spread of sigma points)
+#    beta  = 2    (optimal for Gaussian)
+#    kappa = 0    (secondary scaling)
+#    lambda = alpha²(n+kappa) - n
+#
+#  Uses only numpy. No filterpy or external libraries.
+# ════════════════════════════════════════════════════
+class UKFStateEstimator:
+    """
+    Full 6-DOF UKF state estimator for GPS-denied drone navigation.
+
+    State:  [x, y, z, vx, vy, vz]
+    Input:  IMU acceleration [ax, ay, az]  (world-frame, gravity-compensated)
+    Observations:
+        - Optical flow: [vx, vy]
+        - Barometer:    [z]
+    """
+
+    def __init__(self, init_pos=None, init_vel=None):
+        self.n  = 6          # state dimension
+        alpha   = 0.1
+        beta    = 2.0
+        kappa   = 0.0
+        lam     = alpha**2 * (self.n + kappa) - self.n
+
+        # ── Sigma-point weights ──────────────────────
+        self._lam = lam
+        self._Wm  = np.zeros(2*self.n + 1)
+        self._Wc  = np.zeros(2*self.n + 1)
+        self._Wm[0] = lam / (self.n + lam)
+        self._Wc[0] = lam / (self.n + lam) + (1 - alpha**2 + beta)
+        for i in range(1, 2*self.n + 1):
+            self._Wm[i] = 1.0 / (2.0 * (self.n + lam))
+            self._Wc[i] = 1.0 / (2.0 * (self.n + lam))
+        self._sqrt_factor = np.sqrt(self.n + lam)
+
+        # ── Initial state ────────────────────────────
+        pos = init_pos if init_pos is not None else np.zeros(3)
+        vel = init_vel if init_vel is not None else np.zeros(3)
+        self.x = np.concatenate([pos, vel])          # (6,)
+
+        # ── Initial covariance ───────────────────────
+        self.P = np.diag([0.5, 0.5, 0.3,             # pos uncertainty (m)
+                          0.3, 0.3, 0.2])             # vel uncertainty (m/s)
+
+        # ── Process noise ────────────────────────────
+        # Tuned: position noise from integration + velocity from accel uncertainty
+        self.Q = np.diag([0.01, 0.01, 0.01,          # position (m²)
+                          0.05, 0.05, 0.05])          # velocity (m/s)²
+
+        # ── Measurement noise ─────────────────────────
+        # Optical flow: vx, vy  (2D)
+        self.R_flow = np.diag([0.08, 0.08])           # (m/s)²
+        # Barometer: z          (1D)
+        self.R_baro = np.array([[0.04]])              # m²
+
+    # ─────────────────────────────────────────────────
+    def _sigma_points(self):
+        """Generate 2n+1 sigma points from current state and covariance."""
+        n = self.n
+        # Cholesky square-root of (n+λ)P  — ensures P stays PSD
+        try:
+            S = np.linalg.cholesky((n + self._lam) * self.P)
+        except np.linalg.LinAlgError:
+            # Covariance not PSD — add small regularisation
+            P_reg = self.P + np.eye(n) * 1e-6
+            S = np.linalg.cholesky((n + self._lam) * P_reg)
+
+        sigmas = np.zeros((2*n + 1, n))
+        sigmas[0] = self.x
+        for i in range(n):
+            sigmas[i+1]   = self.x + S[:, i]
+            sigmas[i+n+1] = self.x - S[:, i]
+        return sigmas                                 # (13, 6)
+
+    # ─────────────────────────────────────────────────
+    def _process_model(self, sigma, dt, accel):
+        """
+        Constant-velocity process model with IMU acceleration input.
+        sigma: (6,)   state [x,y,z,vx,vy,vz]
+        accel: (3,)   world-frame acceleration [ax,ay,az]
+        Returns propagated state (6,)
+        """
+        x, y, z, vx, vy, vz = sigma
+        ax, ay, az = accel
+
+        # Position update: p_new = p + v*dt + 0.5*a*dt²
+        x_new  = x  + vx*dt + 0.5*ax*dt*dt
+        y_new  = y  + vy*dt + 0.5*ay*dt*dt
+        z_new  = z  + vz*dt + 0.5*az*dt*dt
+        # Velocity update: v_new = v + a*dt
+        vx_new = vx + ax*dt
+        vy_new = vy + ay*dt
+        vz_new = vz + az*dt
+
+        return np.array([x_new, y_new, z_new, vx_new, vy_new, vz_new])
+
+    # ─────────────────────────────────────────────────
+    def predict(self, dt, accel):
+        """
+        UKF prediction step.
+
+        Parameters
+        ----------
+        dt    : float  — time step (seconds)
+        accel : array  — world-frame linear acceleration [ax, ay, az] (m/s²)
+                         (gravity-compensated; IMU accel minus gravity vector)
+        """
+        accel = np.asarray(accel, dtype=float)
+        sigmas = self._sigma_points()                # (13, 6)
+
+        # Propagate each sigma point through process model
+        sigmas_pred = np.array([
+            self._process_model(s, dt, accel) for s in sigmas
+        ])                                           # (13, 6)
+
+        # Predicted mean
+        x_pred = np.einsum('i,ij->j', self._Wm, sigmas_pred)
+
+        # Predicted covariance
+        P_pred = self.Q.copy()
+        for i in range(2*self.n + 1):
+            d = sigmas_pred[i] - x_pred
+            P_pred += self._Wc[i] * np.outer(d, d)
+
+        self.x = x_pred
+        self.P = P_pred
+
+    # ─────────────────────────────────────────────────
+    def _ukf_update(self, z_obs, H_fn, R):
+        """
+        Generic UKF measurement update.
+
+        z_obs  : observed measurement vector (m,)
+        H_fn   : callable, maps state (6,) → measurement (m,)
+        R      : measurement noise covariance (m×m)
+        """
+        z_obs = np.asarray(z_obs, dtype=float)
+        sigmas = self._sigma_points()                # (13, 6)
+
+        # Map sigma points through measurement function
+        Z_sigmas = np.array([H_fn(s) for s in sigmas])  # (13, m)
+
+        # Predicted measurement mean
+        z_pred = np.einsum('i,ij->j', self._Wm, Z_sigmas)
+
+        # Innovation covariance S and cross-covariance Pxz
+        m = len(z_pred)
+        S   = R.copy()
+        Pxz = np.zeros((self.n, m))
+        for i in range(2*self.n + 1):
+            dz = Z_sigmas[i] - z_pred
+            dx = sigmas[i]   - self.x
+            S   += self._Wc[i] * np.outer(dz, dz)
+            Pxz += self._Wc[i] * np.outer(dx, dz)
+
+        # Kalman gain
+        K = Pxz @ np.linalg.inv(S)                  # (n, m)
+
+        # State and covariance update
+        innovation = z_obs - z_pred
+        self.x = self.x + K @ innovation
+        self.P = self.P - K @ S @ K.T
+
+        # Symmetrise P to prevent numerical drift
+        self.P = 0.5 * (self.P + self.P.T)
+
+    # ─────────────────────────────────────────────────
+    def update_optical_flow(self, vx_obs, vy_obs):
+        """
+        Update from optical flow sensor (measures horizontal velocity).
+
+        Parameters
+        ----------
+        vx_obs : float — observed x-velocity (m/s)
+        vy_obs : float — observed y-velocity (m/s)
+        """
+        def H_flow(s):
+            return np.array([s[3], s[4]])            # extract vx, vy from state
+
+        self._ukf_update(
+            z_obs=np.array([vx_obs, vy_obs]),
+            H_fn=H_flow,
+            R=self.R_flow
+        )
+
+    # ─────────────────────────────────────────────────
+    def update_baro(self, z_obs):
+        """
+        Update from barometric altimeter (measures altitude).
+
+        Parameters
+        ----------
+        z_obs : float — observed altitude (m)
+        """
+        def H_baro(s):
+            return np.array([s[2]])                  # extract z from state
+
+        self._ukf_update(
+            z_obs=np.array([z_obs]),
+            H_fn=H_baro,
+            R=self.R_baro
+        )
+
+    # ─────────────────────────────────────────────────
+    def get_state(self):
+        """
+        Return current state estimate.
+
+        Returns
+        -------
+        dict with keys:
+            'pos'  : np.array(3) — [x, y, z]  (m)
+            'vel'  : np.array(3) — [vx, vy, vz] (m/s)
+            'P'    : np.array(6,6) — full covariance matrix
+            'std_pos' : np.array(3) — 1-sigma position uncertainty (m)
+            'std_vel' : np.array(3) — 1-sigma velocity uncertainty (m/s)
+        """
+        std = np.sqrt(np.maximum(np.diag(self.P), 0))
+        return {
+            'pos':     self.x[:3].copy(),
+            'vel':     self.x[3:].copy(),
+            'P':       self.P.copy(),
+            'std_pos': std[:3],
+            'std_vel': std[3:],
+        }
+
+
+# ════════════════════════════════════════════════════
 #  PRM (Probabilistic Roadmap Method)
 # ════════════════════════════════════════════════════
 NUM_SAMPLES    = 200   # Reduced for instant startup
@@ -1170,6 +1409,9 @@ def run_engine():
     dwa_planner   = DWA()
     mpc_planner   = MPC(horizon=6, dt=0.1)
 
+    # ── UKF State Estimator ─────────────────────────────
+    ukf = UKFStateEstimator(init_pos=START.copy(), init_vel=np.zeros(3))
+
     pos_pid.reset(); vel_pid.reset()
 
     history = {
@@ -1201,6 +1443,21 @@ def run_engine():
         lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
+
+        # ── UKF State Estimation ──────────────────────
+        # Gravity-compensated accel: IMU gives vel derivative + noise
+        # Approximate world-frame accel from velocity change
+        accel_world = (imu - drone_vel) / (dt + 1e-9)   # rough accel estimate
+        accel_world[2] -= 0.0                            # gravity already removed in sim
+        ukf.predict(dt=dt, accel=accel_world)
+        # Update from optical flow (horizontal velocity)
+        ukf.update_optical_flow(imu[0], imu[1])
+        # Update from barometer (altitude)
+        ukf.update_baro(baro)
+        # Use UKF-estimated position for sensor fusion demo (optional blend)
+        ukf_state = ukf.get_state()
+        # Blend: 80% ground-truth sim pos + 20% UKF estimate (progressive trust)
+        drone_pos_ukf = 0.8 * drone_pos + 0.2 * ukf_state['pos']
 
         # ── Smart Brain: Update predictor ────────────
         obs_predictor.update(t)
