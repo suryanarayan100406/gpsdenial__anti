@@ -54,9 +54,12 @@ VOXEL_RES  = 0.4     # voxel edge length (increased for speed)
 START = np.array([-5.0, -4.0, 1.0])
 GOAL  = np.array([ 5.0,  4.0, 2.5])
 
-INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
+# Wind / disturbance model
+WIND_ENABLED   = True
+WIND_MEAN      = np.array([0.15, 0.10, 0.0])  # mean wind vector (m/s)
+WIND_SIGMA     = 0.08                          # Gaussian gust noise std (m/s)
 
-# Static Nature: (cx, cy, radius, height)
+INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
 TREES = [
     (-3.5,  2.0, 0.55, 3.2),
     (-2.0, -3.0, 0.45, 2.5),
@@ -267,51 +270,61 @@ class DWA:
 
             for ti in range(self.theta_samples):
                 angle = 2 * math.pi * ti / self.theta_samples
-                # Direction in XY plane, keep Z from PID
                 dx = math.cos(angle)
                 dy = math.sin(angle)
-                dz = (goal[2] - drone_pos[2]) * 0.3  # soft altitude push
-                direction = np.array([dx, dy, dz])
-                direction /= (np.linalg.norm(direction) + 1e-6)
-                vel_cand = direction * v_mag
 
-                # Simulate trajectory
-                pos = drone_pos.copy()
-                min_clearance = 1e9
-                collided = False
-                for step in range(int(self.sim_time / self.dt_sim)):
-                    pos = pos + vel_cand * self.dt_sim
-                    # Check static obstacles
-                    for (cx, cy, r, h) in static_obs:
-                        d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
-                        if d < 0.3:
-                            collided = True; break
-                        min_clearance = min(min_clearance, d)
-                    if collided: break
-                    # Check predicted dynamic obstacles
-                    for (dpos, dr) in dyn_cur_pred:
-                        d = np.linalg.norm(pos - dpos) - dr
-                        if d < 0.3:
-                            collided = True; break
-                        min_clearance = min(min_clearance, d)
-                    if collided: break
+                # ── ORANGE FIX: Z velocity samples (was XY-only) ────────────────────
+                # Now samples 5 Z elevations: -0.3, -0.15, 0, +0.15, +0.3 m/s
+                goal_dz_soft = (goal[2] - drone_pos[2]) * 0.3
+                z_samples = [
+                    goal_dz_soft - 0.3,
+                    goal_dz_soft - 0.15,
+                    goal_dz_soft,
+                    goal_dz_soft + 0.15,
+                    goal_dz_soft + 0.3,
+                ]
+                for dz in z_samples:
+                    direction = np.array([dx, dy, dz])
+                    direction /= (np.linalg.norm(direction) + 1e-6)
+                    vel_cand = direction * v_mag
 
-                if collided: continue
+                    # Simulate trajectory
+                    pos = drone_pos.copy()
+                    min_clearance = 1e9
+                    collided = False
+                    for step in range(int(self.sim_time / self.dt_sim)):
+                        pos = pos + vel_cand * self.dt_sim
+                        # Check static obstacles
+                        for (cx, cy, r, h) in static_obs:
+                            d = math.sqrt((pos[0]-cx)**2+(pos[1]-cy)**2) - r
+                            if d < 0.3:
+                                collided = True; break
+                            min_clearance = min(min_clearance, d)
+                        if collided: break
+                        # Check predicted dynamic obstacles
+                        for (dpos, dr) in dyn_cur_pred:
+                            d = np.linalg.norm(pos - dpos) - dr
+                            if d < 0.3:
+                                collided = True; break
+                            min_clearance = min(min_clearance, d)
+                        if collided: break
 
-                # Score this trajectory
-                to_goal = goal - pos
-                dist    = np.linalg.norm(to_goal)
-                heading_score   = 1.0 / (dist + 0.01)
-                clearance_score = min(1.0, min_clearance / 2.0)
-                speed_score     = v_mag / self.max_speed
+                    if collided: continue
 
-                score = (self.w_heading   * heading_score +
-                         self.w_clearance * clearance_score +
-                         self.w_speed     * speed_score)
+                    # Score this trajectory
+                    to_goal = goal - pos
+                    dist    = np.linalg.norm(to_goal)
+                    heading_score   = 1.0 / (dist + 0.01)
+                    clearance_score = min(1.0, min_clearance / 2.0)
+                    speed_score     = v_mag / self.max_speed
 
-                if score > best_score:
-                    best_score = score
-                    best_vel   = vel_cand
+                    score = (self.w_heading   * heading_score +
+                             self.w_clearance * clearance_score +
+                             self.w_speed     * speed_score)
+
+                    if score > best_score:
+                        best_score = score
+                        best_vel   = vel_cand
 
         return best_vel
 
@@ -1161,6 +1174,22 @@ class SensorSuite:
                 if hit_dyn: break
             else:
                 beams.append((angle, self.lidar_range, False))
+
+        # ── RED FIX: Downward lidar beam (AGL altitude) ────────────────
+        # Fires straight down to measure height above ground level.
+        # Uses angle=float('nan') as marker for the downward beam.
+        agl = float('nan')
+        for dist in np.linspace(0.05, pos[2], 20):
+            p_down = pos - np.array([0.0, 0.0, dist])
+            v_down = w2v(p_down)
+            if not (0<=v_down[0]<NX and 0<=v_down[1]<NY and 0<=v_down[2]<NZ):
+                agl = dist; break
+            if STATIC_GRID[v_down]:
+                agl = dist; break
+        else:
+            agl = pos[2]   # no hit — ground at Z=0
+        beams.append((float('nan'), agl, True))  # (angle=NaN, agl_distance, downward)
+
         return beams
 
 sensors = SensorSuite()
@@ -1460,6 +1489,14 @@ def run_engine():
         accel = vel_pid.step(vel_error, dt)
 
         drone_vel = drone_vel + accel * dt
+
+        # ── RED FIX: Wind disturbance model ───────────────────────────────────
+        # Applies mean wind vector + per-step Gaussian gusts to velocity.
+        # This creates a realistic disturbance that PID must compensate.
+        if WIND_ENABLED:
+            gust = np.random.randn(3) * WIND_SIGMA
+            drone_vel += (WIND_MEAN + gust) * dt
+
         drone_pos = drone_pos + drone_vel * dt
         drone_pos[2] = max(0.3, min(WORLD_Z-0.2, drone_pos[2]))
 
