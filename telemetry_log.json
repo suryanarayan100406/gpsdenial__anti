@@ -1,13 +1,13 @@
 {
-  "path_length_m": 14.2,
+  "path_length_m": 14.06,
   "straight_line_m": 12.89,
-  "path_optimality_%": 90.8,
-  "safety_score_%": 98.0,
-  "energy_score_%": 92.0,
+  "path_optimality_%": 91.7,
+  "safety_score_%": 96.0,
+  "energy_score_%": 92.2,
   "replanning_score_%": 100.0,
-  "TOTAL_SCORE_%": 95.0,
-  "close_calls": 1,
+  "TOTAL_SCORE_%": 94.7,
+  "close_calls": 2,
   "prm_rrt_replans": 0,
   "dstar_replans": 18,
-  "elapsed_s": 17.6
+  "elapsed_s": 16.9
 }
