@@ -1,0 +1,402 @@
+#VRML_SIM R2023b utf8
+# Realistic Nature 3D World - Forest landscape with clearings
+# Top-down view showing drone autonomous navigation through natural terrain
+
+WorldInfo {
+  title "GPS-Denied Drone Navigation - Realistic Nature Scene"
+  basicTimeStep 8
+  coordinateSystem "NUE"
+}
+
+# Top-down viewpoint (bird's eye view) - movable in Webots
+Viewpoint {
+  fieldOfView 1.0
+  orientation 1 0 0 -1.5708
+  position 0 22 0
+  follow "drone"
+  followSmoothness 0.2
+  followType "Track Position"
+}
+
+# Realistic sky background with sun and clouds
+TexturedBackground {
+  texture "forest"
+  luminosity 1.0
+}
+
+TexturedBackgroundLight {
+  texture "forest"
+  castShadows TRUE
+}
+
+# Wide grass terrain - 25x25m flat field
+Solid {
+  translation 0 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColorMap ImageTexture {
+          url [
+            "https://raw.githubusercontent.com/cyberbotics/webots/released/projects/default/worlds/textures/grass.jpg"
+          ]
+          repeatS 8
+          repeatT 8
+        }
+        roughness 0.95
+        metalness 0
+        normalMapFactor 0.5
+      }
+      geometry Plane { size 25 25 }
+    }
+  ]
+  boundingObject Plane { size 25 25 }
+  name "terrain"
+  locked TRUE
+}
+
+# === PINE TREES (arranged as obstacles) ===
+
+# Pine Tree 1 - Left cluster, slightly forward
+Solid {
+  translation -3.5 0 2.0
+  children [
+    # Trunk
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.30 0.18 0.08
+        roughness 0.9
+        metalness 0
+      }
+      geometry Cylinder { radius 0.12 height 2.5 }
+    }
+  ]
+  name "pine_trunk_1"
+  boundingObject Cylinder { radius 0.12 height 2.5 }
+  physics Physics { density 600 }
+}
+Solid {
+  translation -3.5 0 3.2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.05 0.30 0.08
+        roughness 0.9
+        metalness 0
+      }
+      geometry Cone { bottomRadius 1.1 height 2.8 }
+    }
+  ]
+  name "pine_canopy_1"
+  boundingObject Cone { bottomRadius 1.1 height 2.8 }
+  physics Physics { density 200 }
+}
+
+# Pine Tree 2 - Left cluster, behind 1
+Solid {
+  translation -4.5 0 -0.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.28 0.16 0.07
+        roughness 0.9
+        metalness 0
+      }
+      geometry Cylinder { radius 0.10 height 2.2 }
+    }
+  ]
+  name "pine_trunk_2"
+  boundingObject Cylinder { radius 0.10 height 2.2 }
+  physics Physics { density 600 }
+}
+Solid {
+  translation -4.5 0 2.7
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.04 0.25 0.07
+        roughness 0.9
+        metalness 0
+      }
+      geometry Cone { bottomRadius 0.9 height 2.4 }
+    }
+  ]
+  name "pine_canopy_2"
+  boundingObject Cone { bottomRadius 0.9 height 2.4 }
+  physics Physics { density 200 }
+}
+
+# Oak Tree 1 - Center-right, tall
+Solid {
+  translation 2.5 0 -1.0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.35 0.22 0.10
+        roughness 0.85
+        metalness 0
+      }
+      geometry Cylinder { radius 0.18 height 3.5 }
+    }
+  ]
+  name "oak_trunk_1"
+  boundingObject Cylinder { radius 0.18 height 3.5 }
+  physics Physics { density 700 }
+}
+Solid {
+  translation 2.5 0 4.0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.12 0.38 0.09
+        roughness 0.9
+        metalness 0
+      }
+      geometry Sphere { radius 1.3 }
+    }
+  ]
+  name "oak_canopy_1"
+  boundingObject Sphere { radius 1.3 }
+  physics Physics { density 250 }
+}
+
+# Oak Tree 2 - Right side
+Solid {
+  translation 4.0 0 1.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.32 0.20 0.09
+        roughness 0.85
+        metalness 0
+      }
+      geometry Cylinder { radius 0.15 height 3.0 }
+    }
+  ]
+  name "oak_trunk_2"
+  boundingObject Cylinder { radius 0.15 height 3.0 }
+  physics Physics { density 700 }
+}
+Solid {
+  translation 4.0 0 3.6
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.10 0.35 0.08
+        roughness 0.9
+        metalness 0
+      }
+      geometry Sphere { radius 1.0 }
+    }
+  ]
+  name "oak_canopy_2"
+  boundingObject Sphere { radius 1.0 }
+  physics Physics { density 250 }
+}
+
+# Pine Tree 3 - Far right
+Solid {
+  translation 3.0 0 -3.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.28 0.16 0.06
+        roughness 0.9
+      }
+      geometry Cylinder { radius 0.13 height 3.0 }
+    }
+  ]
+  name "pine_trunk_3"
+  boundingObject Cylinder { radius 0.13 height 3.0 }
+  physics Physics { density 600 }
+}
+Solid {
+  translation 3.0 0 3.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.06 0.28 0.09
+        roughness 0.9
+      }
+      geometry Cone { bottomRadius 1.2 height 3.2 }
+    }
+  ]
+  name "pine_canopy_3"
+  boundingObject Cone { bottomRadius 1.2 height 3.2 }
+  physics Physics { density 200 }
+}
+
+# === ROCKS (low obstacles, harder to avoid!) ===
+Solid {
+  translation -1.5 0 -2.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.45 0.42 0.40
+        roughness 0.95
+        metalness 0.05
+      }
+      geometry Sphere { radius 0.5 }
+    }
+  ]
+  name "rock_1"
+  boundingObject Sphere { radius 0.5 }
+  physics Physics { density 2400 }
+}
+
+Solid {
+  translation 1.0 0 -1.0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.48 0.44 0.42
+        roughness 0.95
+        metalness 0.05
+      }
+      geometry Box { size 0.7 0.4 0.6 }
+    }
+  ]
+  name "rock_2"
+  boundingObject Box { size 0.7 0.4 0.6 }
+  physics Physics { density 2400 }
+}
+
+# === BUSHES / SHRUBS ===
+Solid {
+  translation -2.0 0 0.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.20 0.48 0.15
+        roughness 0.95
+        metalness 0
+      }
+      geometry Sphere { radius 0.55 }
+    }
+  ]
+  name "bush_1"
+  boundingObject Sphere { radius 0.55 }
+  physics Physics { density 350 }
+}
+
+Solid {
+  translation 1.5 0 3.0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.22 0.44 0.14
+        roughness 0.95
+        metalness 0
+      }
+      geometry Sphere { radius 0.45 }
+    }
+  ]
+  name "bush_2"
+  boundingObject Sphere { radius 0.45 }
+  physics Physics { density 350 }
+}
+
+Solid {
+  translation -0.5 0 2.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.18 0.46 0.13
+        roughness 0.95
+      }
+      geometry Sphere { radius 0.4 }
+    }
+  ]
+  name "bush_3"
+  boundingObject Sphere { radius 0.4 }
+  physics Physics { density 350 }
+}
+
+# === GOAL MARKER (bright yellow pillar at goal position) ===
+Solid {
+  translation 4.0 0 -3.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 1.0 0.85 0.0
+        emissiveColor 0.8 0.6 0.0
+        roughness 0.3
+        metalness 0.5
+      }
+      geometry Cylinder { radius 0.08 height 1.5 }
+    }
+  ]
+  name "goal_marker"
+}
+
+# === START MARKER (bright cyan pillar at start) ===
+Solid {
+  translation -4.0 0 0.0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.0 0.85 1.0
+        emissiveColor 0.0 0.6 0.8
+        roughness 0.3
+        metalness 0.5
+      }
+      geometry Cylinder { radius 0.08 height 1.5 }
+    }
+  ]
+  name "start_marker"
+}
+
+# === DRONE ROBOT ===
+Robot {
+  translation -4.0 1.0 0.0
+  rotation 0 1 0 0
+  children [
+    Receiver { channel 1 type "serial" }
+    Emitter { channel 1 type "serial" }
+    # Drone body (frame)
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.10 0.10 0.20
+        metalness 0.7
+        roughness 0.2
+        emissiveColor 0.02 0.02 0.08
+      }
+      geometry Box { size 0.35 0.10 0.35 }
+    }
+    # Front-Right arm
+    Shape {
+      appearance PBRAppearance { baseColor 0.08 0.08 0.18 metalness 0.7 roughness 0.3 }
+      geometry Box { size 0.30 0.03 0.04 }
+    }
+    GPS {
+      accuracy 0.1
+      translation 0 0.05 0
+    }
+    Lidar {
+      translation 0 0 0
+      numberOfLayers 16
+      maxRange 8.0
+      minRange 0.05
+      horizontalResolution 0.05
+      verticalFieldOfView 0.8
+      noise 0.01
+    }
+    # Downward-facing camera for top view
+    Camera {
+      translation 0 -0.08 0
+      rotation 1 0 0 -1.5708
+      name "downward_camera"
+      fieldOfView 1.4
+      width 320
+      height 240
+    }
+  ]
+  name "drone"
+  controller "<extern>"
+  selfCollision FALSE
+  physics Physics {
+    density -1
+    mass 1.8
+    centerOfMass [ 0 0 0 ]
+    inertiaMatrix [ 0.043 0.043 0.064 0 0 0 ]
+  }
+}

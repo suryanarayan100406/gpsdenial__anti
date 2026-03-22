@@ -21,22 +21,29 @@ def _build_actions(context):
     """Build launch actions dynamically based on configuration."""
     pkg_share = get_package_share_directory('drone_nav_2d')
     params_file = os.path.join(pkg_share, 'config', 'nav_params_3d.yaml')
-    rviz_config = os.path.join(pkg_share, 'rviz', 'drone_nav.rviz')
+    rviz_config = os.path.join(pkg_share, 'rviz', 'drone_nav_3d.rviz')
     urdf_path = os.path.join(pkg_share, 'urdf', 'drone_3d.urdf')
 
     # Get world type from launch argument
     world_type = LaunchConfiguration('world_type').perform(context).strip().lower()
     bag_output_base = LaunchConfiguration('bag_output').perform(context).strip()
+    webots_port = LaunchConfiguration('webots_port').perform(context).strip()
     bag_output = _resolve_unique_bag_output(bag_output_base)
 
     # Select world file based on type
     world_map = {
         'urban': os.path.join(pkg_share, 'worlds', 'drone_world_urban_3d.wbt'),
+        'urban_3d': os.path.join(pkg_share, 'worlds', 'drone_world_urban_3d.wbt'),
         'forest': os.path.join(pkg_share, 'worlds', 'drone_world_forest_3d.wbt'),
+        'forest_3d': os.path.join(pkg_share, 'worlds', 'drone_world_forest_3d.wbt'),
         'warehouse': os.path.join(pkg_share, 'worlds', 'drone_world_warehouse_3d.wbt'),
+        'warehouse_3d': os.path.join(pkg_share, 'worlds', 'drone_world_warehouse_3d.wbt'),
         'mixed': os.path.join(pkg_share, 'worlds', 'drone_world_mixed_3d.wbt'),
+        'mixed_3d': os.path.join(pkg_share, 'worlds', 'drone_world_mixed_3d.wbt'),
+        'nature': os.path.join(pkg_share, 'worlds', 'drone_world_nature_3d.wbt'),
+        'nature_3d': os.path.join(pkg_share, 'worlds', 'drone_world_nature_3d.wbt'),
     }
-    selected_world = world_map.get(world_type, world_map['urban'])
+    selected_world = world_map.get(world_type, world_map['nature'])
 
     # Read URDF for robot description
     with open(urdf_path, 'r', encoding='utf-8') as f:
@@ -50,7 +57,7 @@ def _build_actions(context):
     webots = ExecuteProcess(
         cmd=[
             webots_executable,
-            '--port=1234',
+            f'--port={webots_port}',
             selected_world,
             '--batch',
             '--mode=realtime',
@@ -65,7 +72,7 @@ def _build_actions(context):
         executable='driver',
         output='screen',
         additional_env={
-            'WEBOTS_CONTROLLER_URL': 'tcp://127.0.0.1:1234/drone',
+            'WEBOTS_CONTROLLER_URL': f'tcp://127.0.0.1:{webots_port}/drone',
         },
         parameters=[
             {'robot_description': robot_description},
@@ -73,7 +80,7 @@ def _build_actions(context):
         remappings=[
             ('/gps', '/webots/drone/gps'),
             ('/scan', '/webots/drone/scan'),
-            ('/cmd_vel', '/cmd_vel'),
+            ('/cmd_vel', '/cmd_vel_3d'),
         ],
     )
 
@@ -156,6 +163,7 @@ def _build_actions(context):
     actions = [
         LogInfo(msg=[f'Launching 3D drone navigation: {world_type} scenario']),
         LogInfo(msg=[f'Rosbag output: {bag_output}']),
+        LogInfo(msg=[f'Webots port: {webots_port}']),
         webots,
         bridge_driver,
         map_publisher,
@@ -175,13 +183,18 @@ def generate_launch_description() -> LaunchDescription:
     actions = [
         DeclareLaunchArgument(
             'world_type',
-            default_value='urban',
-            description='3D world scenario: urban | forest | warehouse | mixed',
+            default_value='nature',
+            description='3D world scenario: urban | forest | warehouse | mixed | nature',
         ),
         DeclareLaunchArgument(
             'bag_output',
             default_value='bags/drone_nav_3d_run',
             description='Output directory for rosbag2 recording',
+        ),
+        DeclareLaunchArgument(
+            'webots_port',
+            default_value='1234',
+            description='TCP port used by Webots and webots_ros2_driver',
         ),
         OpaqueFunction(function=_build_actions),
     ]

@@ -1,0 +1,128 @@
+obstacles:
+  # Tree 1 at (-3, -3) - Trunk
+  - type: cylinder
+    x: -3.0
+    y: -3.0
+    z: 1.4
+    radius: 0.15
+    height: 2.8
+  # Tree 1 - Canopy
+  - type: sphere
+    x: -3.0
+    y: -3.0
+    z: 2.5
+    radius: 0.8
+  # Tree 2 at (2, 4) - Trunk
+  - type: cylinder
+    x: 2.0
+    y: 4.0
+    z: 1.25
+    radius: 0.12
+    height: 2.5
+  # Tree 2 - Canopy
+  - type: sphere
+    x: 2.0
+    y: 4.0
+    z: 2.3
+    radius: 0.75
+  # Tree 3 at (-5, 2) - Trunk
+  - type: cylinder
+    x: -5.0
+    y: 2.0
+    z: 1.3
+    radius: 0.13
+    height: 2.6
+  # Tree 3 - Canopy
+  - type: sphere
+    x: -5.0
+    y: 2.0
+    z: 2.4
+    radius: 0.78
+  # Tree 4 at (4, -4) - Trunk
+  - type: cylinder
+    x: 4.0
+    y: -4.0
+    z: 1.35
+    radius: 0.14
+    height: 2.7
+  # Tree 4 - Canopy
+  - type: sphere
+    x: 4.0
+    y: -4.0
+    z: 2.5
+    radius: 0.82
+  # Tree 5 at (3, 3) - Trunk
+  - type: cylinder
+    x: 3.0
+    y: 3.0
+    z: 1.2
+    radius: 0.11
+    height: 2.4
+  # Tree 5 - Canopy
+  - type: sphere
+    x: 3.0
+    y: 3.0
+    z: 2.2
+    radius: 0.72
+  # Tree 6 at (-4, -5) - Trunk
+  - type: cylinder
+    x: -4.0
+    y: -5.0
+    z: 1.25
+    radius: 0.12
+    height: 2.5
+  # Tree 6 - Canopy
+  - type: sphere
+    x: -4.0
+    y: -5.0
+    z: 2.3
+    radius: 0.76
+  # Tree 7 at (1, -2) - Trunk
+  - type: cylinder
+    x: 1.0
+    y: -2.0
+    z: 1.3
+    radius: 0.13
+    height: 2.6
+  # Tree 7 - Canopy
+  - type: sphere
+    x: 1.0
+    y: -2.0
+    z: 2.4
+    radius: 0.79
+  # Rock 1 at (-1, 1)
+  - type: box
+    x: -1.0
+    y: 1.0
+    z: 0.15
+    w: 0.6
+    d: 0.7
+    h: 0.3
+  # Rock 2 at (4, 2)
+  - type: sphere
+    x: 4.0
+    y: 2.0
+    z: 0.25
+    radius: 0.4
+  # Rock 3 at (-3, 4)
+  - type: box
+    x: -3.0
+    y: 4.0
+    z: 0.14
+    w: 0.5
+    d: 0.6
+    h: 0.28
+  # Rock 4 at (2, -3)
+  - type: sphere
+    x: 2.0
+    y: -3.0
+    z: 0.3
+    radius: 0.45
+  # Rock 5 at (0, -4)
+  - type: box
+    x: 0.0
+    y: -4.0
+    z: 0.13
+    w: 0.55
+    d: 0.65
+    h: 0.26

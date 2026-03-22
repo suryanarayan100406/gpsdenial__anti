@@ -8,8 +8,8 @@ WorldInfo {
 }
 
 Viewpoint {
-  position 0 -10 6
-  orientation 1 0 0 1.57
+  orientation 1 0 0 -1.56
+  position 0 0 18
 }
 
 DirectionalLight {
@@ -19,129 +19,278 @@ DirectionalLight {
   castShadows TRUE
 }
 
-# Ground/Street
+# Grass Field - Green Natural Terrain
 Solid {
   translation 0 0 0
   children [
     Shape {
       appearance PBRAppearance {
-        baseColor 0.3 0.3 0.3
+        baseColor 0.1 0.4 0.1
         metalness 0
-        roughness 0.8
+        roughness 0.95
       }
-      geometry Box { size 20 20 0.1 }
+      geometry Box { size 30 30 0.1 }
     }
   ]
-  name "ground"
+  name "grass_ground"
   physics Physics { density 1000 }
 }
 
-# Building 1 (Large)
+# Water Pond - Central Feature
 Solid {
-  translation -4 -3 1.5
+  translation 0 0 0.05
   children [
     Shape {
       appearance PBRAppearance {
-        baseColor 0.7 0.7 0.7
+        baseColor 0.15 0.6 0.9
         metalness 0.1
-        roughness 0.7
+        roughness 0.2
       }
-      geometry Box { size 3 2 3 }
+      geometry Box { size 5 5 0.05 }
     }
   ]
-  name "building_1"
+  name "pond"
   physics Physics { density 1000 }
 }
 
-# Building 2
+# Tree 1 at (-3, -3)
 Solid {
-  translation 4 2 1.2
+  translation -3 -3 0.25
   children [
     Shape {
-      appearance PBRAppearance {
-        baseColor 0.6 0.65 0.7
-        metalness 0.15
-        roughness 0.6
-      }
-      geometry Box { size 2 2.5 2.4 }
+      appearance PBRAppearance { baseColor 0.35 0.2 0.08 roughness 0.95 }
+      geometry Cylinder { radius 0.15 height 2.8 }
     }
   ]
-  name "building_2"
-  physics Physics { density 1000 }
+  name "tree_trunk_1"
+  physics Physics { density 400 }
 }
 
-# Building 3
 Solid {
-  translation -2 4 0.9
+  translation -3 -3 2.5
   children [
     Shape {
-      appearance PBRAppearance {
-        baseColor 0.75 0.7 0.65
-        metalness 0
-        roughness 0.8
-      }
-      geometry Box { size 1.8 2 1.8 }
+      appearance PBRAppearance { baseColor 0.15 0.5 0.15 roughness 0.98 }
+      geometry Sphere { radius 0.8 }
     }
   ]
-  name "building_3"
-  physics Physics { density 1000 }
+  name "tree_canopy_1"
+  physics Physics { density 200 }
 }
 
-# Street Light Pole 1
+# Tree 2 at (2, 4)
 Solid {
-  translation 5 5 0.1
+  translation 2 4 0.2
   children [
     Shape {
-      appearance PBRAppearance { baseColor 0.2 0.2 0.2 metalness 1 roughness 0.3 }
-      geometry Cylinder { radius 0.05 height 4 }
+      appearance PBRAppearance { baseColor 0.4 0.22 0.1 roughness 0.95 }
+      geometry Cylinder { radius 0.12 height 2.5 }
     }
   ]
-  name "light_pole_1"
-  physics Physics { density 1000 }
+  name "tree_trunk_2"
+  physics Physics { density 400 }
 }
 
-# Street light (visual only)
-PointLight {
-  location 5 5 4
-  intensity 0.8
-  radius 10
-}
-
-# Obstacle spheres (trees/poles)
 Solid {
-  translation 1 1 1.2
+  translation 2 4 2.3
   children [
     Shape {
-      appearance PBRAppearance { baseColor 0.2 0.5 0.2 roughness 0.9 }
-      geometry Sphere { radius 0.5 }
+      appearance PBRAppearance { baseColor 0.2 0.48 0.2 roughness 0.98 }
+      geometry Sphere { radius 0.75 }
     }
   ]
-  name "tree_1"
-  physics Physics { density 300 }
+  name "tree_canopy_2"
+  physics Physics { density 200 }
+}
+
+# Tree 3 at (-5, 2)
+Solid {
+  translation -5 2 0.25
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.38 0.21 0.09 roughness 0.95 }
+      geometry Cylinder { radius 0.13 height 2.6 }
+    }
+  ]
+  name "tree_trunk_3"
+  physics Physics { density 400 }
 }
 
 Solid {
-  translation -1 -1 1.0
+  translation -5 2 2.4
   children [
     Shape {
-      appearance PBRAppearance { baseColor 0.25 0.45 0.25 roughness 0.9 }
+      appearance PBRAppearance { baseColor 0.18 0.52 0.18 roughness 0.98 }
+      geometry Sphere { radius 0.78 }
+    }
+  ]
+  name "tree_canopy_3"
+  physics Physics { density 200 }
+}
+
+# Tree 4 at (4, -4)
+Solid {
+  translation 4 -4 0.3
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.36 0.23 0.11 roughness 0.95 }
+      geometry Cylinder { radius 0.14 height 2.7 }
+    }
+  ]
+  name "tree_trunk_4"
+  physics Physics { density 400 }
+}
+
+Solid {
+  translation 4 -4 2.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.16 0.54 0.16 roughness 0.98 }
+      geometry Sphere { radius 0.82 }
+    }
+  ]
+  name "tree_canopy_4"
+  physics Physics { density 200 }
+}
+
+# Tree 5 at (3, 3)
+Solid {
+  translation 3 3 0.25
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.42 0.24 0.1 roughness 0.95 }
+      geometry Cylinder { radius 0.11 height 2.4 }
+    }
+  ]
+  name "tree_trunk_5"
+  physics Physics { density 400 }
+}
+
+Solid {
+  translation 3 3 2.2
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.19 0.51 0.19 roughness 0.98 }
+      geometry Sphere { radius 0.72 }
+    }
+  ]
+  name "tree_canopy_5"
+  physics Physics { density 200 }
+}
+
+# Tree 6 at (-4, -5)
+Solid {
+  translation -4 -5 0.2
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.39 0.22 0.09 roughness 0.95 }
+      geometry Cylinder { radius 0.12 height 2.5 }
+    }
+  ]
+  name "tree_trunk_6"
+  physics Physics { density 400 }
+}
+
+Solid {
+  translation -4 -5 2.3
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.17 0.49 0.17 roughness 0.98 }
+      geometry Sphere { radius 0.76 }
+    }
+  ]
+  name "tree_canopy_6"
+  physics Physics { density 200 }
+}
+
+# Tree 7 at (1, -2)
+Solid {
+  translation 1 -2 0.25
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.41 0.23 0.1 roughness 0.95 }
+      geometry Cylinder { radius 0.13 height 2.6 }
+    }
+  ]
+  name "tree_trunk_7"
+  physics Physics { density 400 }
+}
+
+Solid {
+  translation 1 -2 2.4
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.5 0.2 roughness 0.98 }
+      geometry Sphere { radius 0.79 }
+    }
+  ]
+  name "tree_canopy_7"
+  physics Physics { density 200 }
+}
+
+# Rock 1 at (-1, 1)
+Solid {
+  translation -1 1 0.3
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.5 0.5 roughness 0.9 }
+      geometry Box { size 0.6 0.7 0.5 }
+    }
+  ]
+  name "rock_1"
+  physics Physics { density 800 }
+}
+
+# Rock 2 at (4, 2)
+Solid {
+  translation 4 2 0.25
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.55 0.48 0.45 roughness 0.85 }
       geometry Sphere { radius 0.4 }
     }
   ]
-  name "tree_2"
-  physics Physics { density 300 }
+  name "rock_2"
+  physics Physics { density 800 }
 }
 
+# Rock 3 at (-3, 4)
 Solid {
-  translation 3 -4 0.8
+  translation -3 4 0.28
   children [
     Shape {
-      appearance PBRAppearance { baseColor 0.2 0.5 0.2 roughness 0.9 }
-      geometry Sphere { radius 0.35 }
+      appearance PBRAppearance { baseColor 0.52 0.5 0.48 roughness 0.9 }
+      geometry Box { size 0.5 0.6 0.45 }
     }
   ]
-  name "tree_3"
-  physics Physics { density 300 }
+  name "rock_3"
+  physics Physics { density 800 }
+}
+
+# Rock 4 at (2, -3)
+Solid {
+  translation 2 -3 0.32
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.48 0.45 0.42 roughness 0.88 }
+      geometry Sphere { radius 0.45 }
+    }
+  ]
+  name "rock_4"
+  physics Physics { density 800 }
+}
+
+# Rock 5 at (0, -4)
+Solid {
+  translation 0 -4 0.26
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.54 0.52 0.5 roughness 0.92 }
+      geometry Box { size 0.55 0.65 0.48 }
+    }
+  ]
+  name "rock_5"
+  physics Physics { density 800 }
 }
 
 # Drone (external controller)

@@ -27,6 +27,7 @@ def _build_actions(context):
 
     world_profile = LaunchConfiguration('world_profile').perform(context).strip().lower()
     bag_output_base = LaunchConfiguration('bag_output').perform(context).strip()
+    webots_port = LaunchConfiguration('webots_port').perform(context).strip()
     bag_output = _resolve_unique_bag_output(bag_output_base)
 
     selected_world = world_realistic
@@ -44,7 +45,7 @@ def _build_actions(context):
     webots = ExecuteProcess(
         cmd=[
             webots_executable,
-            '--port=1234',
+            f'--port={webots_port}',
             selected_world,
             '--batch',
             '--mode=realtime',
@@ -58,7 +59,7 @@ def _build_actions(context):
         executable='driver',
         output='screen',
         additional_env={
-            'WEBOTS_CONTROLLER_URL': 'drone',
+            'WEBOTS_CONTROLLER_URL': f'tcp://127.0.0.1:{webots_port}/drone',
         },
         parameters=[
             {'robot_description': robot_description},
@@ -142,6 +143,7 @@ def _build_actions(context):
     actions = [
         LogInfo(msg=[f'Launching drone navigation in {world_profile} scenario']),
         LogInfo(msg=[f'Rosbag output: {bag_output}']),
+        LogInfo(msg=[f'Webots port: {webots_port}']),
         webots,
         bridge_driver,
         map_publisher,
@@ -167,6 +169,11 @@ def generate_launch_description() -> LaunchDescription:
             'bag_output',
             default_value='bags/drone_nav_run',
             description='Output directory for rosbag2 recording',
+        ),
+        DeclareLaunchArgument(
+            'webots_port',
+            default_value='1234',
+            description='TCP port used by Webots and webots_ros2_driver',
         ),
         OpaqueFunction(function=_build_actions),
     ]

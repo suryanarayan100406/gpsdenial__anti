@@ -1,7 +1,10 @@
 import math
+import os
 
 import numpy as np
 import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -25,6 +28,7 @@ class MapPublisher3D(Node):
         self.declare_parameter('world_depth_m', 10.0)
         self.declare_parameter('publish_rate_hz', 1.0)
         self.declare_parameter('inflation_radius_m', 0.4)
+        self.declare_parameter('world_type', 'urban')
 
         frame_id = self.get_parameter('frame_id').value
         resolution = float(self.get_parameter('resolution').value)
@@ -33,6 +37,7 @@ class MapPublisher3D(Node):
         depth = float(self.get_parameter('world_depth_m').value)
         publish_rate = float(self.get_parameter('publish_rate_hz').value)
         inflation_rad = float(self.get_parameter('inflation_radius_m').value)
+        self.world_type = self.get_parameter('world_type').value
 
         # Initialize voxel grid
         self.voxel_grid = VoxelGrid(
@@ -56,7 +61,67 @@ class MapPublisher3D(Node):
         self.get_logger().info('3D Map publisher initialized.')
 
     def _populate_obstacles(self) -> None:
-        """Add sample obstacles to voxel grid."""
+        """Load obstacles from world-specific YAML configuration."""
+        try:
+            pkg_share = get_package_share_directory('drone_nav_2d')
+            
+            # Normalize world type (remove _3d suffix if present)
+            world_type_clean = self.world_type.replace('_3d', '')
+            
+            config_file = os.path.join(
+                pkg_share, 'config', f'obs_config_{world_type_clean}.yaml'
+            )
+            
+            if not os.path.exists(config_file):
+                self.get_logger().warn(
+                    f'Obstacle config not found: {config_file}. '
+                    f'Falling back to default obstacles.'
+                )
+                self._populate_obstacles_default()
+                return
+            
+            # Load YAML configuration
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            if not config or 'obstacles' not in config:
+                self.get_logger().warn(
+                    f'No obstacles defined in {config_file}. Loading defaults.'
+                )
+                self._populate_obstacles_default()
+                return
+            
+            # Paint obstacles from config
+            for obs in config.get('obstacles', []):
+                obs_type = obs.get('type', 'box').lower()
+                try:
+                    if obs_type == 'box':
+                        self.voxel_grid.paint_box(
+                            obs['x'], obs['y'], obs['z'],
+                            obs['w'], obs['d'], obs['h']
+                        )
+                    elif obs_type == 'sphere':
+                        self.voxel_grid.paint_sphere(
+                            obs['x'], obs['y'], obs['z'],
+                            obs['radius']
+                        )
+                    elif obs_type == 'cylinder':
+                        self.voxel_grid.paint_cylinder(
+                            obs['x'], obs['y'], obs['z'],
+                            obs['radius'], obs['height']
+                        )
+                except KeyError as e:
+                    self.get_logger().warn(f'Missing field in obstacle config: {e}')
+            
+            self.get_logger().info(
+                f'Loaded {len(config.get("obstacles", []))} obstacles from {config_file}'
+            )
+        except Exception as e:
+            self.get_logger().error(f'Error loading obstacle config: {e}')
+            self._populate_obstacles_default()
+
+    def _populate_obstacles_default(self) -> None:
+        """Fallback: paint default obstacles when config not found."""
         # Spheres (trees, poles)
         self.voxel_grid.paint_sphere(0.0, 0.0, 1.5, 0.4)
         self.voxel_grid.paint_sphere(2.0, 2.0, 1.0, 0.3)

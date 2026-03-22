@@ -1,0 +1,59 @@
+obstacles:
+  # Urban section buildings
+  - type: box
+    x: -3.0
+    y: 2.0
+    z: 2.5
+    w: 3.0
+    d: 2.5
+    h: 5.0
+  
+  - type: box
+    x: -1.0
+    y: 3.0
+    z: 2.0
+    w: 2.5
+    d: 2.0
+    h: 4.0
+  
+  # Forest section trees
+  - type: cylinder
+    x: 2.0
+    y: 2.0
+    z: 0.5
+    radius: 0.2
+    height: 3.0
+  - type: sphere
+    x: 2.0
+    y: 2.0
+    z: 2.5
+    radius: 0.8
+  
+  - type: cylinder
+    x: 3.5
+    y: 1.0
+    z: 0.5
+    radius: 0.18
+    height: 2.8
+  - type: sphere
+    x: 3.5
+    y: 1.0
+    z: 2.3
+    radius: 0.75
+  
+  # Warehouse section racks
+  - type: box
+    x: -1.0
+    y: -2.0
+    z: 1.0
+    w: 2.0
+    d: 0.5
+    h: 2.0
+  
+  - type: box
+    x: 1.0
+    y: -2.0
+    z: 1.0
+    w: 2.0
+    d: 0.5
+    h: 2.0

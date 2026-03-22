@@ -18,8 +18,15 @@ setup(
         (f'share/{package_name}/config', [
             'config/nav_params.yaml',
             'config/nav_params_3d.yaml',
+            'config/obs_config_urban.yaml',
+            'config/obs_config_forest.yaml',
+            'config/obs_config_warehouse.yaml',
+            'config/obs_config_mixed.yaml',
         ]),
-        (f'share/{package_name}/rviz', ['rviz/drone_nav.rviz']),
+        (f'share/{package_name}/rviz', [
+            'rviz/drone_nav.rviz',
+            'rviz/drone_nav_3d.rviz',
+        ]),
         (f'share/{package_name}/worlds', [
             'worlds/drone_world.wbt',
             'worlds/drone_world_hard.wbt',
@@ -28,6 +35,7 @@ setup(
             'worlds/drone_world_forest_3d.wbt',
             'worlds/drone_world_warehouse_3d.wbt',
             'worlds/drone_world_mixed_3d.wbt',
+            'worlds/drone_world_nature_3d.wbt',
         ]),
         (f'share/{package_name}/controllers/moving_wall_controller', ['controllers/moving_wall_controller/moving_wall_controller.py']),
         (f'share/{package_name}/urdf', [

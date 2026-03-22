@@ -70,14 +70,15 @@ path_planner_3d:
     # Planning parameters
     replan_rate_hz: 1.0      # 1 Hz replanning
     
-    # Default start/goal positions (world coords)
+    # Default start/goal positions (world coords) - Nature world
+    # Start: left clearing, Goal: right-far corner (across trees)
     start_xyz: [-4.0, 0.0, 1.0]
     goal_xyz: [4.0, 0.0, 2.0]
     
     # RRT parameters (fallback planner)
-    rrt_max_iterations: 3000
+    rrt_max_iterations: 5000
     rrt_step_size_m: 0.4     # 40cm step
-    rrt_goal_sample_rate: 0.15
+    rrt_goal_sample_rate: 0.20
 
 # ===== MAP PUBLISHER 3D =====
 map_publisher_3d:

@@ -8,6 +8,7 @@ from nav_msgs.msg import Path
 from rclpy.node import Node
 from std_msgs.msg import Bool
 from tf2_ros import TransformBroadcaster
+from tf_transformations import euler_from_quaternion
 
 
 @dataclass
@@ -214,6 +215,9 @@ class DroneController3D(Node):
         self.avoidance_cmd = Twist()
 
         self.last_control_time = self.get_clock().now()
+        
+        # Pose history for velocity calculation (3-pose buffer)
+        self.pose_history: List[tuple] = []
 
         # Publishers
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel_3d', 10)
@@ -260,7 +264,30 @@ class DroneController3D(Node):
         self.state.x = msg.pose.position.x
         self.state.y = msg.pose.position.y
         self.state.z = msg.pose.position.z
-        # TODO: Extract Euler angles from quaternion
+        
+        # Extract Euler angles from quaternion
+        qx = msg.pose.orientation.x
+        qy = msg.pose.orientation.y
+        qz = msg.pose.orientation.z
+        qw = msg.pose.orientation.w
+        roll, pitch, yaw = euler_from_quaternion([qx, qy, qz, qw])
+        self.state.roll = roll
+        self.state.pitch = pitch
+        self.state.yaw = yaw
+        
+        # Calculate velocity from pose history
+        now = self.get_clock().now()
+        self.pose_history.append((msg, now))
+        if len(self.pose_history) > 3:
+            self.pose_history.pop(0)
+        
+        if len(self.pose_history) >= 2:
+            prev_pose, prev_time = self.pose_history[-2]
+            dt_vel = (now - prev_time).nanoseconds / 1e9
+            if dt_vel > 0.001:  # More than 1ms
+                self.state.vx = (msg.pose.position.x - prev_pose.pose.position.x) / dt_vel
+                self.state.vy = (msg.pose.position.y - prev_pose.pose.position.y) / dt_vel
+                self.state.vz = (msg.pose.position.z - prev_pose.pose.position.z) / dt_vel
 
     def _on_avoidance_cmd(self, msg: Twist) -> None:
         """Receive avoidance command from obstacle avoidance node."""
@@ -422,12 +449,17 @@ class DroneController3D(Node):
         self.cmd_pub.publish(Twist())
 
     def _update_trajectory(self, pose_msg: PoseStamped) -> None:
-        """Append current pose to trajectory."""
+        """Append current pose to trajectory and publish."""
         pose_copy = PoseStamped()
         pose_copy.header = pose_msg.header
         pose_copy.pose = pose_msg.pose
         self.traj_msg.header.stamp = pose_msg.header.stamp
         self.traj_msg.poses.append(pose_copy)
+        
+        # Trim trajectory history to prevent unbounded growth (keep last 500 poses)
+        if len(self.traj_msg.poses) > 500:
+            self.traj_msg.poses = self.traj_msg.poses[-500:]
+        
         self.traj_pub.publish(self.traj_msg)
 
     def _publish_tf(self, pose_msg: PoseStamped) -> None:
