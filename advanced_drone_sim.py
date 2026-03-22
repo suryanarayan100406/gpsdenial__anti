@@ -1346,9 +1346,15 @@ def run_engine():
         dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
         # Sensor: lidar, IMU, barometer
-        lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
+        lidar_all = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
+        # Separate downward AGL beam (angle=NaN) from horizontal beams
+        lidar_horiz = [b for b in lidar_all if not math.isnan(b[0])]
+        agl_beam    = next((b for b in lidar_all if math.isnan(b[0])), None)
+        agl_dist    = agl_beam[1] if agl_beam else drone_pos[2]
+        lidar = lidar_horiz   # alias used everywhere below
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
+
 
         # ── LOOP CLOSURE & RELOCALISATION ────────────
         # Every 10 steps: add current pose as a keyframe
