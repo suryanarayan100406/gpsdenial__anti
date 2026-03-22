@@ -1,0 +1,271 @@
+#VRML_SIM R2025a utf8
+# Warehouse 3D World - Industrial setting with racks
+# Large interior space with storage shelves
+
+WorldInfo {
+  title "GPS-Denied Warehouse Drone Navigation"
+  basicTimeStep 8
+  physics "default"
+  gravity 0 0 -9.81
+}
+
+Viewpoint {
+  position 5 -20 5
+  orientation 1 0 0 1.57
+}
+
+Background {
+  skyColor [0.3 0.3 0.35]
+  bottomColor [0.2 0.2 0.25]
+}
+
+DirectionalLight {
+  ambientIntensity 0.6
+  direction 1 -0.5 -0.5
+  intensity 0.8
+  castShadows TRUE
+}
+
+# Warehouse floor (concrete)
+Solid {
+  translation 0 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.3 0.35
+        metallic 0
+        roughness 0.9
+      }
+      geometry Box { size 50 40 0.2 }
+    }
+  ]
+  name "floor"
+  physics Physics { density 2000 }
+}
+
+# Ceiling
+Solid {
+  translation 0 0 10
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.6 0.6 0.65
+        metallic 0.3
+        roughness 0.5
+      }
+      geometry Box { size 50 40 0.2 }
+    }
+  ]
+  name "ceiling"
+  physics Physics { density 2000 }
+}
+
+# Wall 1 (left)
+Solid {
+  translation -25 0 5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.4 0.45
+        metallic 0
+        roughness 0.8
+      }
+      geometry Box { size 0.2 40 10 }
+    }
+  ]
+  name "wall_left"
+  physics Physics { density 2000 }
+}
+
+# Wall 2 (right)
+Solid {
+  translation 25 0 5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.4 0.45
+        metallic 0
+        roughness 0.8
+      }
+      geometry Box { size 0.2 40 10 }
+    }
+  ]
+  name "wall_right"
+  physics Physics { density 2000 }
+}
+
+# Storage Racks (metal framework)
+# Rack Row 1
+Solid {
+  translation 0 -8 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 1
+        roughness 0.3
+      }
+      geometry Box { size 2 0.4 4 }
+    }
+  ]
+  name "rack_1_1"
+  physics Physics { density 1000 }
+}
+
+Solid {
+  translation 0 -8 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.4 0.4
+        metallic 0.8
+        roughness 0.4
+      }
+      geometry Box { size 0.1 0.4 4 }
+    }
+  ]
+  name "rack_1_post"
+  physics Physics { density 1500 }
+}
+
+# Rack Row 2
+Solid {
+  translation 0 -4 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 1
+        roughness 0.3
+      }
+      geometry Box { size 2 0.4 4 }
+    }
+  ]
+  name "rack_2_1"
+  physics Physics { density 1000 }
+}
+
+# Rack Row 3
+Solid {
+  translation 0 0 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 1
+        roughness 0.3
+      }
+      geometry Box { size 2 0.4 4 }
+    }
+  ]
+  name "rack_3_1"
+  physics Physics { density 1000 }
+}
+
+# Rack Row 4
+Solid {
+  translation 0 4 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 1
+        roughness 0.3
+      }
+      geometry Box { size 2 0.4 4 }
+    }
+  ]
+  name "rack_4_1"
+  physics Physics { density 1000 }
+}
+
+# Rack Row 5
+Solid {
+  translation 0 8 2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 1
+        roughness 0.3
+      }
+      geometry Box { size 2 0.4 4 }
+    }
+  ]
+  name "rack_5_1"
+  physics Physics { density 1000 }
+}
+
+# Overhead obstructions (beams)
+Solid {
+  translation 5 -6 8
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.3 0.35
+        metallic 0.5
+        roughness 0.4
+      }
+      geometry Box { size 0.3 2 0.3 }
+    }
+  ]
+  name "beam_1"
+  physics Physics { density 1500 }
+}
+
+Solid {
+  translation -8 3 7
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.32 0.32 0.37
+        metallic 0.5
+        roughness 0.4
+      }
+      geometry Box { size 0.25 3 0.25 }
+    }
+  ]
+  name "beam_2"
+  physics Physics { density 1500 }
+}
+
+# Warehouse lighting (industrial style)
+PointLight {
+  location -5 5 9
+  intensity 0.6
+  radius 12
+}
+
+PointLight {
+  location 5 -3 9
+  intensity 0.6
+  radius 12
+}
+
+# Drone starting near warehouse entrance
+Robot {
+  translation -15 -18 2
+  rotation 0 0 1 0
+  children [
+    Receiver { channel 1 type "serial" }
+    Emitter { channel 1 type "serial" }
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.2 0.25 0.3
+        metallic 0.4
+        roughness 0.3
+      }
+      geometry Box { size 0.35 0.35 0.1 }
+    }
+    GPS { accuracy 0.1 }
+    Lidar {
+      numberOfLayers 6
+      maxRange 4
+      minRange 0.01
+      horizontalResolution 0.12
+      verticalFieldOfView 0.45
+    }
+  ]
+  name "drone"
+  controller "webots_ros2_driver"
+}

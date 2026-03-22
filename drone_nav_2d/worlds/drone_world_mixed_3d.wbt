@@ -1,0 +1,270 @@
+#VRML_SIM R2025a utf8
+# Mixed 3D World - Combines urban, forest, and warehouse environments
+# Most challenging scenario with diverse obstacle types
+
+WorldInfo {
+  title "GPS-Denied Mixed Environment Drone Navigation"
+  basicTimeStep 8
+  physics "default"
+  gravity 0 0 -9.81
+}
+
+Viewpoint {
+  position 0 -20 8
+  orientation 1 0 0 1.57
+}
+
+Background {
+  skyColor [0.55 0.65 0.9]
+  bottomColor [0.3 0.45 0.3]
+}
+
+DirectionalLight {
+  ambientIntensity 0.7
+  direction 0.4 -0.6 -0.5
+  intensity 1.1
+  castShadows TRUE
+}
+
+# Ground with varied terrain
+Solid {
+  translation -5 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.35 0.5 0.25
+        metallic 0
+        roughness 0.95
+      }
+      geometry Box { size 20 20 0.2 }
+    }
+  ]
+  name "terrain_forest"
+  physics Physics { density 1000 }
+}
+
+Solid {
+  translation 8 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.35 0.35 0.35
+        metallic 0
+        roughness 0.9
+      }
+      geometry Box { size 15 20 0.2 }
+    }
+  ]
+  name "terrain_urban"
+  physics Physics { density 1000 }
+}
+
+# === FOREST SECTION (Left) ===
+# Trees
+DEF TREE_FOREST_1 Solid {
+  translation -8 -5 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.3 0.2 0.1 roughness 0.8 }
+      geometry Cylinder { radius 0.12 height 3 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+Solid {
+  translation -8 -5 2.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.5 0.1 roughness 0.9 }
+      geometry Sphere { radius 0.8 }
+    }
+  ]
+  name "tree_canopy_1"
+  physics Physics { density 400 }
+}
+
+DEF TREE_FOREST_2 Solid {
+  translation -6 3 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.32 0.22 0.12 roughness 0.8 }
+      geometry Cylinder { radius 0.1 height 2.8 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+Solid {
+  translation -6 3 2.2
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.18 0.48 0.1 roughness 0.9 }
+      geometry Sphere { radius 0.7 }
+    }
+  ]
+  name "tree_canopy_2"
+  physics Physics { density 400 }
+}
+
+Solid {
+  translation -10 -2 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.22 0.5 0.15 roughness 0.9 }
+      geometry Sphere { radius 0.5 }
+    }
+  ]
+  name "shrub_forest"
+  physics Physics { density 300 }
+}
+
+# === URBAN SECTION (Center) ===
+# Buildings
+Solid {
+  translation 3 -6 1.2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.65 0.65 0.7
+        metallic 0.1
+        roughness 0.7
+      }
+      geometry Box { size 2.5 2 2.5 }
+    }
+  ]
+  name "building_1"
+  physics Physics { density 1000 }
+}
+
+Solid {
+  translation 8 4 0.9
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.7 0.68 0.65
+        metallic 0
+        roughness 0.8
+      }
+      geometry Box { size 2 1.8 1.8 }
+    }
+  ]
+  name "building_2"
+  physics Physics { density 1000 }
+}
+
+Solid {
+  translation 5 -1 1.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.6 0.62 0.68
+        metallic 0.05
+        roughness 0.75
+      }
+      geometry Box { size 1.5 1.5 3 }
+    }
+  ]
+  name "building_3"
+  physics Physics { density 1000 }
+}
+
+# Street light
+PointLight {
+  location 10 -5 5
+  intensity 0.7
+  radius 12
+}
+
+# Urban trees/planters
+Solid {
+  translation 4 2 0.8
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.45 0.15 roughness 0.9 }
+      geometry Sphere { radius 0.35 }
+    }
+  ]
+  name "tree_urban"
+  physics Physics { density 300 }
+}
+
+# === WAREHOUSE SECTION (Right) ===
+# Industrial building
+Solid {
+  translation 18 -3 2.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.45 0.45 0.5
+        metallic 0.2
+        roughness 0.6
+      }
+      geometry Box { size 4 3.5 5 }
+    }
+  ]
+  name "warehouse_building"
+  physics Physics { density 1000 }
+}
+
+# Storage racks inside "warehouse"
+Solid {
+  translation 17 -2 1.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.5 0.5
+        metallic 0.9
+        roughness 0.35
+      }
+      geometry Box { size 1.5 0.3 3 }
+    }
+  ]
+  name "rack_industrial"
+  physics Physics { density 1000 }
+}
+
+# Overhead beam
+Solid {
+  translation 16 3 7
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.3 0.35
+        metallic 0.5
+        roughness 0.4
+      }
+      geometry Box { size 0.25 2 0.25 }
+    }
+  ]
+  name "beam_industrial"
+  physics Physics { density 1500 }
+}
+
+# === DRONE START (Neutral zone) ===
+Robot {
+  translation 0 7 1.5
+  rotation 0 0 1 0
+  children [
+    Receiver { channel 1 type "serial" }
+    Emitter { channel 1 type "serial" }
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.15 0.2 0.28
+        metallic 0.5
+        roughness 0.3
+      }
+      geometry Box { size 0.35 0.35 0.1 }
+    }
+    GPS { accuracy 0.1 }
+    Lidar {
+      numberOfLayers 8
+      maxRange 5.5
+      minRange 0.01
+      horizontalResolution 0.09
+      verticalFieldOfView 0.55
+    }
+  ]
+  name "drone"
+  controller "webots_ros2_driver"
+}

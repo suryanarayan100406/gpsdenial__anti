@@ -1,0 +1,220 @@
+#VRML_SIM R2025a utf8
+# Forest 3D World - Dense trees and terrain
+# Natural outdoor environment with elevation
+
+WorldInfo {
+  title "GPS-Denied Forest Drone Navigation"
+  basicTimeStep 8
+  physics "default"
+  gravity 0 0 -9.81
+}
+
+Viewpoint {
+  position 0 -15 8
+  orientation 1 0 0 1.57
+}
+
+Background {
+  skyColor [0.5 0.6 0.9]
+  bottomColor [0.3 0.5 0.3]
+}
+
+DirectionalLight {
+  ambientIntensity 0.8
+  direction 0.3 -0.7 -0.5
+  intensity 1.0
+  castShadows TRUE
+}
+
+# Terrain (elevated ground with hills)
+Solid {
+  translation 0 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.6 0.3
+        metallic 0
+        roughness 0.95
+      }
+      geometry Box { size 25 25 0.2 }
+    }
+  ]
+  name "terrain_base"
+  physics Physics { density 1000 }
+}
+
+# Hill 1 (elevated terrain)
+Solid {
+  translation 5 0 0.3
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.35 0.5 0.25
+        metallic 0
+        roughness 0.95
+      }
+      geometry Sphere { radius 1.5 }
+    }
+  ]
+  name "hill_1"
+  physics Physics { density 800 }
+}
+
+# Hill 2
+Solid {
+  translation -5 -3 0.2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.55 0.3
+        metallic 0
+        roughness 0.95
+      }
+      geometry Sphere { radius 1.2 }
+    }
+  ]
+  name "hill_2"
+  physics Physics { density 800 }
+}
+
+# Dense forest of trees (cylinders = trunks, spheres = canopy)
+DEF TREE_1_TRUNK Solid {
+  translation 2 2 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.3 0.2 0.1 roughness 0.8 }
+      geometry Cylinder { radius 0.15 height 3 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+DEF TREE_1_CANOPY Solid {
+  translation 2 2 2.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.5 0.1 roughness 0.9 }
+      geometry Sphere { radius 0.8 }
+    }
+  ]
+  physics Physics { density 400 }
+}
+
+DEF TREE_2_TRUNK Solid {
+  translation -2 1 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.35 0.2 0.1 roughness 0.8 }
+      geometry Cylinder { radius 0.12 height 2.8 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+DEF TREE_2_CANOPY Solid {
+  translation -2 1 2.2
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.15 0.45 0.1 roughness 0.9 }
+      geometry Sphere { radius 0.75 }
+    }
+  ]
+  physics Physics { density 400 }
+}
+
+DEF TREE_3_TRUNK Solid {
+  translation 1 -3 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.32 0.22 0.12 roughness 0.8 }
+      geometry Cylinder { radius 0.1 height 2.5 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+DEF TREE_3_CANOPY Solid {
+  translation 1 -3 2.0
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.18 0.48 0.12 roughness 0.9 }
+      geometry Sphere { radius 0.7 }
+    }
+  ]
+  physics Physics { density 400 }
+}
+
+DEF TREE_4_TRUNK Solid {
+  translation -4 3 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.3 0.18 0.08 roughness 0.8 }
+      geometry Cylinder { radius 0.14 height 2.6 }
+    }
+  ]
+  physics Physics { density 500 }
+}
+
+DEF TREE_4_CANOPY Solid {
+  translation -4 3 2.1
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.16 0.42 0.1 roughness 0.9 }
+      geometry Sphere { radius 0.8 }
+    }
+  ]
+  physics Physics { density 400 }
+}
+
+# More sparse trees
+Solid {
+  translation 4 -2 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.22 0.5 0.15 roughness 0.9 }
+      geometry Sphere { radius 0.45 }
+    }
+  ]
+  name "shrub_1"
+  physics Physics { density 300 }
+}
+
+Solid {
+  translation -3 -2 0.5
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.25 0.48 0.18 roughness 0.9 }
+      geometry Sphere { radius 0.4 }
+    }
+  ]
+  name "shrub_2"
+  physics Physics { density 300 }
+}
+
+# Drone starting position (elevated for forest)
+Robot {
+  translation 0 0 1.0
+  rotation 0 0 1 0
+  children [
+    Receiver { channel 1 type "serial" }
+    Emitter { channel 1 type "serial" }
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.15 0.15 0.25
+        metallic 0.6
+        roughness 0.3
+      }
+      geometry Box { size 0.35 0.35 0.1 }
+    }
+    GPS { accuracy 0.1 }
+    Lidar {
+      numberOfLayers 8
+      maxRange 6
+      minRange 0.01
+      horizontalResolution 0.08
+      verticalFieldOfView 0.6
+    }
+  ]
+  name "drone"
+  controller "webots_ros2_driver"
+}

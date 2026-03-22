@@ -1,0 +1,297 @@
+<?xml version="1.0"?>
+<robot name="drone_3d_quadrotor">
+  <!-- Main body link (frame with electronics) -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <!-- Total mass: 1.8 kg (frame 0.5kg + battery 0.9kg + electronics 0.4kg) -->
+      <mass value="1.8"/>
+      <!-- Inertia for body-dominant quadrotor frame -->
+      <inertia ixx="0.043" ixy="0.0" ixz="0.0" iyy="0.043" iyz="0.0" izz="0.064"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.35 0.35 0.10"/>
+      </geometry>
+      <material name="body_gray">
+        <color rgba="0.2 0.2 0.25 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.35 0.35 0.10"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Camera mounting point (optional, could add lidar here) -->
+  <link name="camera_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.05 0.05 0.03"/>
+      </geometry>
+      <material name="camera_black">
+        <color rgba="0.05 0.05 0.05 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.05 0.05 0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Motor 1 (Front-Right) -->
+  <link name="motor_1_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.00008" ixy="0.0" ixz="0.0" iyy="0.00015" iyz="0.0" izz="0.00015"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+      <material name="motor_red">
+        <color rgba="0.8 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Propeller 1 (Front-Right) -->
+  <link name="prop_1_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0002"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+      <material name="prop_gray">
+        <color rgba="0.4 0.4 0.4 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Motor 2 (Front-Left) -->
+  <link name="motor_2_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.00008" ixy="0.0" ixz="0.0" iyy="0.00015" iyz="0.0" izz="0.00015"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+      <material name="motor_red"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Propeller 2 (Front-Left) -->
+  <link name="prop_2_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0002"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+      <material name="prop_gray"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Motor 3 (Back-Right) -->
+  <link name="motor_3_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.00008" ixy="0.0" ixz="0.0" iyy="0.00015" iyz="0.0" izz="0.00015"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+      <material name="motor_blue">
+        <color rgba="0.1 0.1 0.8 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Propeller 3 (Back-Right) -->
+  <link name="prop_3_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0002"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+      <material name="prop_gray"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Motor 4 (Back-Left) -->
+  <link name="motor_4_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.00008" ixy="0.0" ixz="0.0" iyy="0.00015" iyz="0.0" izz="0.00015"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+      <material name="motor_blue"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Propeller 4 (Back-Left) -->
+  <link name="prop_4_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0002"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+      <material name="prop_gray"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.25 0.04 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- JOINTS -->
+
+  <!-- Camera to body -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0 0 -0.08" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Motor 1 (Front-Right: +X, +Y) -->
+  <joint name="motor_1_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="motor_1_link"/>
+    <origin xyz="0.175 0.175 0.08" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" effort="10" velocity="0"/>
+    <dynamics damping="0.01" friction="0.0"/>
+  </joint>
+
+  <!-- Propeller 1 -->
+  <joint name="prop_1_joint" type="revolute">
+    <parent link="motor_1_link"/>
+    <child link="prop_1_link"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="628.32"/>
+    <dynamics damping="0.001" friction="0.0"/>
+  </joint>
+
+  <!-- Motor 2 (Front-Left: +X, -Y) -->
+  <joint name="motor_2_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="motor_2_link"/>
+    <origin xyz="0.175 -0.175 0.08" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" effort="10" velocity="0"/>
+    <dynamics damping="0.01" friction="0.0"/>
+  </joint>
+
+  <!-- Propeller 2 -->
+  <joint name="prop_2_joint" type="revolute">
+    <parent link="motor_2_link"/>
+    <child link="prop_2_link"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="628.32"/>
+    <dynamics damping="0.001" friction="0.0"/>
+  </joint>
+
+  <!-- Motor 3 (Back-Right: -X, +Y) -->
+  <joint name="motor_3_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="motor_3_link"/>
+    <origin xyz="-0.175 0.175 0.08" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" effort="10" velocity="0"/>
+    <dynamics damping="0.01" friction="0.0"/>
+  </joint>
+
+  <!-- Propeller 3 -->
+  <joint name="prop_3_joint" type="revolute">
+    <parent link="motor_3_link"/>
+    <child link="prop_3_link"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="628.32"/>
+    <dynamics damping="0.001" friction="0.0"/>
+  </joint>
+
+  <!-- Motor 4 (Back-Left: -X, -Y) -->
+  <joint name="motor_4_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="motor_4_link"/>
+    <origin xyz="-0.175 -0.175 0.08" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" effort="10" velocity="0"/>
+    <dynamics damping="0.01" friction="0.0"/>
+  </joint>
+
+  <!-- Propeller 4 -->
+  <joint name="prop_4_joint" type="revolute">
+    <parent link="motor_4_link"/>
+    <child link="prop_4_link"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="628.32"/>
+    <dynamics damping="0.001" friction="0.0"/>
+  </joint>
+
+</robot>

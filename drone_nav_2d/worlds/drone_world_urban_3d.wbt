@@ -1,0 +1,217 @@
+#VRML_SIM R2025a utf8
+# Urban 3D World - GPS-Denied Drone Navigation
+# Buildings, streets, street lights
+
+WorldInfo {
+  title "GPS-Denied Urban Drone Navigation"
+  basicTimeStep 8
+  physics "default"
+  gravity 0 0 -9.81
+  CFM 0.0001
+  ERP 0.5
+  dampingConstant 0.5
+  contactProperties [
+    ContactProperties {
+      material1 "concrete"
+      material2 "wheels"
+      coulombFriction [0.8]
+      frictionCircle 1
+    }
+  ]
+}
+
+Viewpoint {
+  position 0 -10 6
+  orientation 1 0 0 1.57
+}
+
+Background {
+  skyColor [0.6 0.7 1.0]
+  bottomColor [0.4 0.4 0.4]
+}
+
+DirectionalLight {
+  ambientIntensity 0.7
+  direction 0.5 -1 0.5
+  intensity 1.2
+  castShadows TRUE
+}
+
+# Ground/Street
+Solid {
+  translation 0 0 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.3 0.3
+        metallic 0
+        roughness 0.8
+      }
+      geometry Box { size 20 20 0.1 }
+    }
+  ]
+  name "ground"
+  physics Physics { density 1000 }
+}
+
+# Building 1 (Large)
+Solid {
+  translation -4 -3 1.5
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.7 0.7 0.7
+        metallic 0.1
+        roughness 0.7
+      }
+      geometry Box { size 3 2 3 }
+    }
+  ]
+  name "building_1"
+  physics Physics { density 1000 }
+}
+
+# Building 2
+Solid {
+  translation 4 2 1.2
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.6 0.65 0.7
+        metallic 0.15
+        roughness 0.6
+      }
+      geometry Box { size 2 2.5 2.4 }
+    }
+  ]
+  name "building_2"
+  physics Physics { density 1000 }
+}
+
+# Building 3
+Solid {
+  translation -2 4 0.9
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.75 0.7 0.65
+        metallic 0
+        roughness 0.8
+      }
+      geometry Box { size 1.8 2 1.8 }
+    }
+  ]
+  name "building_3"
+  physics Physics { density 1000 }
+}
+
+# Street Light Pole 1
+Solid {
+  translation 5 5 0.1
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.2 0.2 metallic 1 roughness 0.3 }
+      geometry Cylinder { radius 0.05 height 4 }
+    }
+  ]
+  name "light_pole_1"
+  physics Physics { density 1000 }
+}
+
+# Street light (visual only)
+PointLight {
+  location 5 5 4
+  intensity 0.8
+  radius 10
+}
+
+# Obstacle spheres (trees/poles)
+Solid {
+  translation 1 1 1.2
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.5 0.2 roughness 0.9 }
+      geometry Sphere { radius 0.5 }
+    }
+  ]
+  name "tree_1"
+  physics Physics { density 300 }
+}
+
+Solid {
+  translation -1 -1 1.0
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.25 0.45 0.25 roughness 0.9 }
+      geometry Sphere { radius 0.4 }
+    }
+  ]
+  name "tree_2"
+  physics Physics { density 300 }
+}
+
+Solid {
+  translation 3 -4 0.8
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.2 0.5 0.2 roughness 0.9 }
+      geometry Sphere { radius 0.35 }
+    }
+  ]
+  name "tree_3"
+  physics Physics { density 300 }
+}
+
+# Drone (external controller)
+Robot {
+  translation 0 0 0.5
+  rotation 0 0 1 0
+  children [
+    Receiver {
+      channel 1
+      type "serial"
+    }
+    Emitter {
+      channel 1
+      type "serial"
+    }
+    DEF BODY Shape {
+      appearance PBRAppearance {
+        baseColor 0.2 0.2 0.3
+        metallic 0.5
+        roughness 0.4
+      }
+      geometry Box { size 0.35 0.35 0.1 }
+    }
+    DEF FRONT_LEFT Transform {
+      translation 0.175 0.175 0.08
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.1 0.1 }
+          geometry Cylinder { radius 0.03 height 0.05 }
+        }
+      ]
+    }
+    DEF FRONT_RIGHT Transform {
+      translation 0.175 -0.175 0.08
+      children [
+        Shape {
+          appearance PBRAppearance { baseColor 0.8 0.1 0.1 }
+          geometry Cylinder { radius 0.03 height 0.05 }
+        }
+      ]
+    }
+    GPS {
+      accuracy 0.1
+    }
+    Lidar {
+      numberOfLayers 4
+      maxRange 5
+      minRange 0.01
+      horizontalResolution 0.1
+      verticalFieldOfView 0.5
+    }
+  ]
+  name "drone"
+  controller "webots_ros2_driver"
+}

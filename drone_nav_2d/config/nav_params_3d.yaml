@@ -1,0 +1,107 @@
+# 3D Drone Navigation Configuration Parameters
+
+# ===== DRONE CONTROLLER 3D =====
+drone_controller_3d:
+  ros__parameters:
+    # Control rate
+    control_rate_hz: 20.0
+    
+    # Positional tolerances
+    waypoint_tolerance_m: 0.2
+    
+    # Velocity limits (m/s)
+    max_velocity_xy_ms: 2.0
+    max_velocity_z_ms: 1.5
+    max_acceleration_mss: 5.0
+    
+    # Attitude limits
+    max_roll_rad: 0.785      # 45 degrees
+    max_pitch_rad: 0.785
+    max_yaw_rate_rads: 3.14
+    
+    # Physics
+    gravity_ms2: 9.81
+    mass_kg: 1.8
+    
+    # Position PID gains (X, Y, Z)
+    kp_x: 1.5
+    ki_x: 0.05
+    kd_x: 0.3
+    kp_y: 1.5
+    ki_y: 0.05
+    kd_y: 0.3
+    kp_z: 2.0
+    ki_z: 0.08
+    kd_z: 0.4
+    
+    # Velocity PID gains
+    kp_vx: 1.2
+    ki_vx: 0.04
+    kd_vx: 0.2
+    kp_vy: 1.2
+    ki_vy: 0.04
+    kd_vy: 0.2
+    kp_vz: 1.5
+    ki_vz: 0.05
+    kd_vz: 0.3
+    
+    # Attitude PID gains (Roll, Pitch, Yaw)
+    kp_roll: 4.5
+    kd_roll: 0.15
+    kp_pitch: 4.5
+    kd_pitch: 0.15
+    kp_yaw: 4.0
+    ki_yaw: 0.02
+    kd_yaw: 0.1
+
+# ===== PATH PLANNER 3D =====
+path_planner_3d:
+  ros__parameters:
+    # Voxel grid parameters
+    voxel_resolution: 0.2    # 20cm voxels
+    world_width_m: 10.0      # X dimension
+    world_height_m: 8.0      # Z dimension (vertical)
+    world_depth_m: 10.0      # Y dimension
+    
+    # Inflation/safety
+    inflation_radius_m: 0.4  # 40cm safety margin
+    drone_radius_m: 0.2      # 20cm drone radius
+    
+    # Planning parameters
+    replan_rate_hz: 1.0      # 1 Hz replanning
+    
+    # Default start/goal positions (world coords)
+    start_xyz: [-4.0, 0.0, 1.0]
+    goal_xyz: [4.0, 0.0, 2.0]
+    
+    # RRT parameters (fallback planner)
+    rrt_max_iterations: 3000
+    rrt_step_size_m: 0.4     # 40cm step
+    rrt_goal_sample_rate: 0.15
+
+# ===== MAP PUBLISHER 3D =====
+map_publisher_3d:
+  ros__parameters:
+    frame_id: map
+    resolution: 0.2          # Match voxel resolution
+    world_width_m: 10.0
+    world_height_m: 8.0
+    world_depth_m: 10.0
+    publish_rate_hz: 1.0
+    inflation_radius_m: 0.4
+
+# ===== OBSTACLE AVOIDANCE 3D =====
+obstacle_avoidance_3d:
+  ros__parameters:
+    lidar_topic: /webots/drone/scan
+    obstacle_threshold_m: 0.6       # Distance to trigger avoidance
+    influence_distance_m: 1.5       # Max influence range
+    repulsive_gain: 1.0             # Repulsive force strength
+    tangential_gain: 0.5            # Tangential (circling) force
+    max_avoidance_velocity: 1.0     # Max avoidance speed (m/s)
+    use_3d: true                    # Enable 3D point cloud processing
+
+# ===== METRICS LOGGER 3D =====
+metrics_logger_3d:
+  ros__parameters:
+    output_file: results/mission_metrics_3d.json
