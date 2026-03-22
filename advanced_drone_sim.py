@@ -1415,23 +1415,35 @@ def run_engine():
                     active_path = new_path
                     did_replan  = True
 
-        # ── D* Lite periodic replan ──────────────────
+        # ── D* Lite periodic replan ──────────────────────────────
+        # Only overwrite the active_path when:
+        #   (a) the current path is blocked, OR
+        #   (b) D* finds a strictly shorter path (avoids reset loop)
         if step % REPLAN_INTERVAL == 0:
             grid_new = get_grid(dyn_cur)
             dstar.update_grid(grid_new, w2v(drone_pos))
             dstar.compute(max_iter=5000)
             dstar_wp = dstar.extract_path()
-            # Blend D* hint into waypoints
             if dstar_wp and len(dstar_wp) > 1:
-                active_path = dstar_wp
-                did_dstar_rp = True
+                # Path length comparison: only adopt if shorter than remaining
+                remaining_len = sum(
+                    np.linalg.norm(np.array(active_path[i+1]) - np.array(active_path[i]))
+                    for i in range(len(active_path)-1)
+                ) if len(active_path) > 1 else 1e9
+                dstar_len = sum(
+                    np.linalg.norm(np.array(dstar_wp[i+1]) - np.array(dstar_wp[i]))
+                    for i in range(len(dstar_wp)-1)
+                )
+                if blocked or dstar_len < remaining_len * 0.85:  # 15% improvement threshold
+                    active_path = dstar_wp
+                    did_dstar_rp = True
 
         # ── Follow active path ───────────────────────
         if not active_path:
             active_path = [GOAL.copy()]
 
-        # Skip waypoints already passed
-        while len(active_path)>1 and np.linalg.norm(drone_pos-np.array(active_path[0]))<0.35:
+        # Pop waypoints the drone has reached (looser = 0.5 m so progress isn't stalled)
+        while len(active_path) > 1 and np.linalg.norm(drone_pos - np.array(active_path[0])) < 0.5:
             active_path.pop(0)
 
         target_wp = np.array(active_path[0])
