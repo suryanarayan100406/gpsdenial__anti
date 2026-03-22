@@ -409,6 +409,124 @@ class MPC:
         return best_vel
 
 # ════════════════════════════════════════════════════
+#  LOOP CLOSURE & RELOCALISATION
+#  ┌─────────────────────────────────────────────────┐
+#  │  Jab drone same jagah dubara aata hai:          │
+#  │  1. Lidar scan fingerprint → keyframe DB mein   │
+#  │     compare karo (cosine similarity)            │
+#  │  2. Match milne pe: "yeh jagah pehle dekhi hai" │
+#  │  3. Drift = (true_pos - estimated_pos) correct  │
+#  │  4. Map accurate rehta hai (no drift)           │
+#  └─────────────────────────────────────────────────┘
+# ════════════════════════════════════════════════════
+class LoopClosure:
+    """Scan-based loop closure detector with drift correction.
+
+    Each keyframe stores:
+      - world position (cx, cy, cz)
+      - lidar range histogram fingerprint (normalised)
+
+    Detection: cosine similarity of fingerprints.
+    Correction: weighted linear blend of pose correction vector
+                applied to the drone's drift accumulator.
+    """
+    FINGERPRINT_BINS = 16   # histogram bins for range fingerprint
+    MATCH_THRESHOLD  = 0.88 # cosine similarity threshold for loop closure
+    MIN_KEYFRAME_DIST= 1.2  # don't add a new keyframe within this radius
+
+    def __init__(self):
+        self.keyframes = []          # list of (pos, fingerprint)
+        self.drift     = np.zeros(3) # accumulated drift correction
+        self.closures  = []          # log: (step, match_idx, correction)
+
+    # ── Fingerprint generation ───────────────────────
+    def _fingerprint(self, lidar_hits, drone_pos):
+        """Convert lidar hits to a normalised range histogram.
+        Returns zero-vector if no lidar hits (nothing to fingerprint).
+        """
+        if not lidar_hits:
+            return np.zeros(self.FINGERPRINT_BINS)
+        ranges = [np.linalg.norm(np.array(h) - drone_pos) for h in lidar_hits]
+        max_r  = max(ranges) if ranges else 1.0
+        hist   = np.zeros(self.FINGERPRINT_BINS)
+        for r in ranges:
+            idx = min(int(r / (max_r + 1e-6) * self.FINGERPRINT_BINS),
+                      self.FINGERPRINT_BINS - 1)
+            hist[idx] += 1.0
+        norm = np.linalg.norm(hist)
+        return hist / (norm + 1e-9)
+
+    def _cosine_sim(self, a, b):
+        """Cosine similarity between two fingerprint vectors."""
+        denom = (np.linalg.norm(a) * np.linalg.norm(b)) + 1e-9
+        return float(np.dot(a, b) / denom)
+
+    # ── Add keyframe ─────────────────────────────────
+    def add_keyframe(self, drone_pos, lidar_hits):
+        """Add current position as a keyframe if far enough from existing ones."""
+        for (kp, _) in self.keyframes:
+            if np.linalg.norm(drone_pos - kp) < self.MIN_KEYFRAME_DIST:
+                return False  # too close to existing keyframe
+        fp = self._fingerprint(lidar_hits, drone_pos)
+        if np.linalg.norm(fp) < 1e-6:
+            return False       # empty scan, skip
+        self.keyframes.append((drone_pos.copy(), fp))
+        return True
+
+    # ── Check for loop closure ────────────────────────
+    def check(self, drone_pos, lidar_hits, step):
+        """Compare current scan to all keyframes.
+        Returns (matched, correction_vector, match_info_str).
+        correction_vector: delta to apply to drone_pos to reduce drift.
+        """
+        if len(self.keyframes) < 3:
+            return False, np.zeros(3), ""
+
+        fp_cur = self._fingerprint(lidar_hits, drone_pos)
+        if np.linalg.norm(fp_cur) < 1e-6:
+            return False, np.zeros(3), ""
+
+        best_sim = -1.0
+        best_idx = -1
+        for i, (kp, kfp) in enumerate(self.keyframes):
+            # Only compare with keyframes that are spatially nearby
+            # (we don't expect closure from the other side of the world)
+            if np.linalg.norm(drone_pos - kp) > 3.5:
+                continue
+            sim = self._cosine_sim(fp_cur, kfp)
+            if sim > best_sim:
+                best_sim = sim
+                best_idx  = i
+
+        if best_idx < 0 or best_sim < self.MATCH_THRESHOLD:
+            return False, np.zeros(3), ""
+
+        # Loop closure detected!
+        matched_pos = self.keyframes[best_idx][0]
+        # Correction: move estimated position toward the remembered position
+        correction  = (matched_pos - drone_pos) * 0.3   # soft correction (30%)
+        self.drift  += correction
+        self.closures.append((step, best_idx, correction.copy()))
+
+        info = (f"LOOP CLOSURE @step={step} | sim={best_sim:.3f} | "
+                f"drift-fix={np.linalg.norm(correction):.2f}m "
+                f"← matched keyframe #{best_idx} @ {matched_pos.round(1)}")
+        return True, correction, info
+
+    # ── Apply correction to position ──────────────────
+    def apply(self, drone_pos, correction):
+        """Apply the correction vector to the drone position estimate."""
+        return drone_pos + correction
+
+    @property
+    def n_closures(self):
+        return len(self.closures)
+
+    @property
+    def total_drift_corrected(self):
+        return float(np.linalg.norm(self.drift))
+
+# ════════════════════════════════════════════════════
 #  PID CONTROLLER WITH ANTI-WINDUP
 # ════════════════════════════════════════════════════
 class PIDController:
@@ -1169,6 +1287,7 @@ def run_engine():
     obs_predictor = ObstaclePredictor(DYNAMIC_OBSTACLES)
     dwa_planner   = DWA()
     mpc_planner   = MPC(horizon=6, dt=0.1)
+    loop_closure  = LoopClosure()   # Relocalisation / drift correction
 
     pos_pid.reset(); vel_pid.reset()
 
@@ -1201,6 +1320,16 @@ def run_engine():
         lidar = sensors.read_lidar(drone_pos, dyn_cur, n_beams=12)
         imu   = sensors.read_imu(drone_vel)
         baro  = sensors.read_barometer(drone_pos[2])
+
+        # ── LOOP CLOSURE & RELOCALISATION ────────────
+        # Every 10 steps: add current pose as a keyframe
+        if step % 10 == 0:
+            loop_closure.add_keyframe(drone_pos, lidar)
+        # Every step: check if we've been here before
+        lc_detected, lc_correction, lc_info = loop_closure.check(drone_pos, lidar, step)
+        if lc_detected:
+            drone_pos = loop_closure.apply(drone_pos, lc_correction)
+            print(f"  🔄 {lc_info}")
 
         # ── Smart Brain: Update predictor ────────────
         obs_predictor.update(t)

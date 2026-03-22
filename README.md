@@ -27,6 +27,7 @@ This project simulates a GPS-denied drone autonomously navigating through a real
 | **Smart Brain** | **ObstaclePredictor** | Constant-velocity extrapolation of all dynamic obstacles 6 steps into the future |
 | **Smart Brain** | **DWA** (Dynamic Window Approach) | Samples 144 velocity candidates per step, scores by heading + clearance + speed using predicted obstacle positions |
 | **Smart Brain** | **MPC** (Model Predictive Control) | 60-rollout N-step trajectory optimiser; minimises goal distance + obstacle proximity + control effort + jerk |
+| **Smart Brain** | **Loop Closure / Relocalisation** | Lidar scan fingerprinting + cosine-similarity keyframe DB; when drone revisits a place, detects drift and corrects estimated position |
 | **Reactive** | **Potential Fields** | Smooth blended attractive/repulsive forces guide the drone between waypoints |
 | **Reactive** | **Emergency Reflexes** | Instant escape thrust when any obstacle breaches 0.8 m proximity |
 | **Control** | **Cascaded PID** | Position → Velocity control in all 3 axes |

@@ -1,13 +1,13 @@
 {
-  "path_length_m": 17.01,
+  "path_length_m": 14.12,
   "straight_line_m": 12.89,
-  "path_optimality_%": 75.8,
-  "safety_score_%": 0.0,
-  "energy_score_%": 95.7,
+  "path_optimality_%": 91.3,
+  "safety_score_%": 100.0,
+  "energy_score_%": 91.7,
   "replanning_score_%": 100.0,
-  "TOTAL_SCORE_%": 60.9,
-  "close_calls": 501,
-  "prm_rrt_replans": 509,
-  "dstar_replans": 60,
-  "elapsed_s": 29.9
+  "TOTAL_SCORE_%": 95.7,
+  "close_calls": 0,
+  "prm_rrt_replans": 0,
+  "dstar_replans": 17,
+  "elapsed_s": 16.8
 }
