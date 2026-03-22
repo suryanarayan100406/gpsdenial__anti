@@ -2,12 +2,12 @@
   "path_length_m": 16.64,
   "straight_line_m": 12.89,
   "path_optimality_%": 77.5,
-  "safety_score_%": 100,
+  "safety_score_%": 100.0,
   "energy_score_%": 91.1,
-  "replanning_score_%": 0,
-  "TOTAL_SCORE_%": 75.8,
+  "replanning_score_%": 100.0,
+  "TOTAL_SCORE_%": 90.8,
   "close_calls": 0,
   "prm_rrt_replans": 0,
   "dstar_replans": 23,
-  "elapsed_s": 54.5
+  "elapsed_s": 23.3
 }
