@@ -41,6 +41,8 @@ Recently, the system has been upgraded to support an **Autonomous Mission Planne
 
 ## 🗂️ Project Structure
 
+**For a detailed guide on the Webots and ROS 2 files, their exact locations, and how to implement this navigation stack on a real physical drone, please read [DOCUMENTATION.md](DOCUMENTATION.md).**
+
 ```
 drone/
 ├── advanced_drone_sim.py      # Main simulation — trajectory, UKF, planners, and visualization
