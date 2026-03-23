@@ -52,7 +52,15 @@ WORLD_Z    = 5.0     # 0..5 m
 VOXEL_RES  = 0.4     # voxel edge length (increased for speed)
 
 START = np.array([-5.0, -4.0, 1.0])
-GOAL  = np.array([ 5.0,  4.0, 2.5])
+
+# Intermediary checkpoints the drone must visit before the final goal
+MISSION_WAYPOINTS = [
+    np.array([ 2.0, -3.0, 3.0]),
+    np.array([ 6.0,  0.0, 4.0]),
+    np.array([-2.0,  2.0, 2.0]),
+    np.array([ 5.0,  4.0, 2.5])  # Final GOAL
+]
+GOAL  = MISSION_WAYPOINTS[-1]
 
 INFLATION_RADIUS = 0.6   # metres added around each obstacle for safety
 
@@ -709,9 +717,9 @@ def edge_free(p1, p2, grid, steps=8):
             return False
     return True
 
-def build_prm(grid, n=NUM_SAMPLES):
+def build_prm(grid, start_pos, goal_pos, n=NUM_SAMPLES):
     """Build PRM nodes with neighbor connections."""
-    nodes = [START.copy(), GOAL.copy()]
+    nodes = [start_pos.copy(), goal_pos.copy()]
     for _ in range(n):
         p = sample_config(grid)
         if p is not None:
@@ -726,8 +734,8 @@ def build_prm(grid, n=NUM_SAMPLES):
                 adj[i].append((j, d))
     return nodes, adj
 
-def dijkstra_prm(nodes, adj):
-    """Find shortest path on PRM graph from node 0 (START) to node 1 (GOAL)."""
+def dijkstra_prm(nodes, adj, start_pos, goal_pos):
+    """Find shortest path on PRM graph from node 0 (start) to node 1 (goal)."""
     n = len(nodes)
     dist = [float('inf')] * n
     dist[0] = 0.0
@@ -748,25 +756,27 @@ def dijkstra_prm(nodes, adj):
             if nd < dist[v]:
                 dist[v] = nd; prev[v] = u
                 heapq.heappush(heap, (nd, v))
-    return [START.copy(), GOAL.copy()]
+    return [start_pos.copy(), goal_pos.copy()]
 
 # ════════════════════════════════════════════════════
 #  INFORMED RRT*  (over existing PRM path as init)
 # ════════════════════════════════════════════════════
 class InformedRRTStar:
-    def __init__(self, grid, c_best_init=None, max_iter=800, step=1.0, radius=1.8):
+    def __init__(self, grid, start_pos, goal_pos, c_best_init=None, max_iter=800, step=1.0, radius=1.8):
         self.grid = grid
-        self.nodes = [START.copy()]
+        self.start_pos = start_pos
+        self.goal_pos = goal_pos
+        self.nodes = [start_pos.copy()]
         self.parent = {0: None}
         self.cost   = {0: 0.0}
         self.max_iter = max_iter
         self.step  = step
         self.radius = radius
-        self.c_min = np.linalg.norm(GOAL-START)
+        self.c_min = np.linalg.norm(goal_pos-start_pos)
         self.c_best = c_best_init if c_best_init else float('inf')
         # Informed sampling ellipse parameters
-        self.x_center = (START+GOAL)/2
-        self.a1 = (GOAL-START)/self.c_min  # major axis direction
+        self.x_center = (start_pos+goal_pos)/2
+        self.a1 = (goal_pos-start_pos)/self.c_min  # major axis direction
 
     def _sample(self):
         if self.c_best < float('inf') and random.random() < 0.6:
@@ -833,12 +843,12 @@ class InformedRRTStar:
                     self.cost[i]   = c
 
             # Check goal
-            if np.linalg.norm(q_new-GOAL) < self.step:
-                total = best_cost + np.linalg.norm(q_new-GOAL)
+            if np.linalg.norm(q_new-self.goal_pos) < self.step:
+                total = best_cost + np.linalg.norm(q_new-self.goal_pos)
                 if total < self.c_best:
                     self.c_best = total
                     # Extract path
-                    path = [GOAL.copy(), q_new.copy()]
+                    path = [self.goal_pos.copy(), q_new.copy()]
                     cur = new_id
                     while self.parent[cur] is not None:
                         cur = self.parent[cur]
@@ -862,6 +872,7 @@ class DStarLite:
         self._g = {}
         self._rhs = {}
         self._U = []   # priority queue
+        self._U_dict = {} # lazy deletion
         self._km = 0
         self.start = None
         self.goal  = None
@@ -895,25 +906,35 @@ class DStarLite:
         self.start = start_v
         self.goal  = goal_v
         self._g = {}; self._rhs = {}; self._U = []; self._km = 0
+        self._U_dict = {}
         self._rhs[goal_v] = 0.0
-        heapq.heappush(self._U, (self._key(goal_v), goal_v))
+        k = self._key(goal_v)
+        heapq.heappush(self._U, (k, goal_v))
+        self._U_dict[goal_v] = k
 
     def _update_vertex(self, u):
         if u != self.goal:
             self._rhs[u] = min((self._v(s)+c for s,c in self._succ(u)), default=self.INF)
-        # Remove from heap then re-add if inconsistent
-        self._U = [(k,v) for k,v in self._U if v!=u]
-        heapq.heapify(self._U)
+        if u in self._U_dict:
+            del self._U_dict[u]
         if self._v(u) != self._r(u):
-            heapq.heappush(self._U, (self._key(u), u))
+            k = self._key(u)
+            heapq.heappush(self._U, (k, u))
+            self._U_dict[u] = k
 
     def compute(self, max_iter=100000):
         itr=0
         while self._U and itr<max_iter:
-            itr+=1
             k_old, u = heapq.heappop(self._U)
+            if u not in self._U_dict or self._U_dict[u] != k_old:
+                continue
+            del self._U_dict[u]
+            itr+=1
             if k_old < self._key(u):
-                heapq.heappush(self._U, (self._key(u), u)); continue
+                k_new = self._key(u)
+                heapq.heappush(self._U, (k_new, u))
+                self._U_dict[u] = k_new
+                continue
             if self._v(u) > self._r(u):
                 self._g[u] = self._r(u)
                 for s,_ in self._succ(u): self._update_vertex(s)
@@ -1351,11 +1372,15 @@ def run_engine():
 
     dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
+    current_wp_idx = 0
+    current_target = MISSION_WAYPOINTS[current_wp_idx]
+    print(f"  [MISSION TARGET]: Waypoint {current_wp_idx+1}/{len(MISSION_WAYPOINTS)} → {current_target}")
+
     # ── PHASE 1: PRM ──────────────────────────────────
     print("\n[1/3] Building PRM roadmap...")
     t0 = time.time()
-    prm_nodes, prm_adj = build_prm(STATIC_GRID)
-    prm_path = dijkstra_prm(prm_nodes, prm_adj)
+    prm_nodes, prm_adj = build_prm(STATIC_GRID, drone_pos, current_target)
+    prm_path = dijkstra_prm(prm_nodes, prm_adj, drone_pos, current_target)
     dt_prm = (time.time()-t0)*1000
     print(f"      PRM: {len(prm_nodes)} nodes | Dijkstra path: {len(prm_path)} waypoints | {dt_prm:.0f}ms")
 
@@ -1363,7 +1388,7 @@ def run_engine():
     print("[2/3] Running Theta* (any-angle, maximum path optimality)...")
     t0 = time.time()
     theta = ThetaStar(STATIC_GRID)
-    theta_path = theta.search(START, GOAL)
+    theta_path = theta.search(drone_pos, current_target)
     dt_theta = (time.time()-t0)*1000
 
     if theta_path and len(theta_path) > 1:
@@ -1374,7 +1399,7 @@ def run_engine():
         print(f"      Theta* failed ({dt_theta:.0f}ms) → falling back to Bidirectional A*...")
         bidir = BidirectionalAStar(STATIC_GRID)
         t0b = time.time()
-        bidir_path = bidir.search(START, GOAL)
+        bidir_path = bidir.search(drone_pos, current_target)
         dt_bidir = (time.time()-t0b)*1000
         if bidir_path and len(bidir_path) > 1:
             active_path = [p.copy() for p in bidir_path]
@@ -1383,7 +1408,7 @@ def run_engine():
         else:
             print(f"      Bidirectional A* failed → falling back to Informed RRT*...")
             prm_dist = sum(np.linalg.norm(prm_path[i+1]-prm_path[i]) for i in range(len(prm_path)-1))
-            rrtstar = InformedRRTStar(STATIC_GRID, c_best_init=prm_dist)
+            rrtstar = InformedRRTStar(STATIC_GRID, drone_pos, current_target, c_best_init=prm_dist)
             rrt_path = rrtstar.build()
             active_path = [p.copy() for p in rrt_path]
             opt_path = rrt_path
@@ -1396,7 +1421,7 @@ def run_engine():
     print("[3/3] Initializing D* Lite replanner...")
     grid0 = get_grid(dyn_cur)
     dstar = DStarLite(grid0)
-    dstar.initialize(w2v(drone_pos), w2v(GOAL))
+    dstar.initialize(w2v(drone_pos), w2v(current_target))
     
     # We'll compute the initial path with a time bound
     dstar.compute(max_iter=2500)
@@ -1428,6 +1453,7 @@ def run_engine():
         'min_dist':[10.0],
         'pot_force':[np.zeros(3)],
         'metrics': [metrics.score()],
+        'target':  [current_target.copy()],
     }
 
     REPLAN_INTERVAL = 8  # steps between D* replans
@@ -1436,6 +1462,32 @@ def run_engine():
 
     for step in range(MAX_STEPS):
         t += dt
+        
+        # ── Mission Waypoint Check ────────────────────
+        if np.linalg.norm(drone_pos - current_target) < 1.0:
+            if current_wp_idx < len(MISSION_WAYPOINTS) - 1:
+                current_wp_idx += 1
+                current_target = MISSION_WAYPOINTS[current_wp_idx]
+                print(f"\n★ [MISSION UPDATE] Reached WP {current_wp_idx}, heading to WP {current_wp_idx+1}/{len(MISSION_WAYPOINTS)} → {current_target} ★")
+                
+                # Multi-tier replan to new target using Theta* and BiDir
+                theta = ThetaStar(STATIC_GRID)
+                theta_path = theta.search(drone_pos, current_target, max_nodes=35000)
+                if theta_path and len(theta_path) > 1:
+                    active_path = [p.copy() for p in theta_path]
+                else:
+                    bidir = BidirectionalAStar(STATIC_GRID)
+                    bidir_path = bidir.search(drone_pos, current_target, max_nodes=25000)
+                    if bidir_path and len(bidir_path) > 1:
+                        active_path = [p.copy() for p in bidir_path]
+                    else:
+                        active_path = [current_target.copy()]
+                
+                # Re-init D* Lite
+                dstar.initialize(w2v(drone_pos), w2v(current_target))
+                dstar.compute(max_iter=2500)
+                pos_pid.reset(); vel_pid.reset()
+
         # Dynamic obstacle positions
         dyn_cur = [(obs['pos'] + obs['vel']*t, obs['r']) for obs in DYNAMIC_OBSTACLES]
 
@@ -1477,7 +1529,7 @@ def run_engine():
         min_d = obstacle_distance(drone_pos, dyn_cur)
 
         # ── Potential Field ──────────────────────────
-        pf_force = potential_force(drone_pos, GOAL, dyn_cur)
+        pf_force = potential_force(drone_pos, current_target, dyn_cur)
 
         # ── Check path blockage ──────────────────────
         blocked = False
@@ -1495,13 +1547,13 @@ def run_engine():
         if blocked:
             grid_new = get_grid(dyn_cur)
             jps_planner = JPS(grid_new, w2v(drone_pos)[2])
-            jps_path = jps_planner.search(drone_pos, GOAL)
+            jps_path = jps_planner.search(drone_pos, current_target)
             if jps_path and len(jps_path) > 1:
                 active_path = jps_path
                 did_replan  = True
             else:
                 # Fallback to mini-RRT* if JPS can't find a path
-                rrt2 = InformedRRTStar(grid_new, c_best_init=None, max_iter=400, step=1.0, radius=1.8)
+                rrt2 = InformedRRTStar(grid_new, drone_pos, current_target, c_best_init=None, max_iter=400, step=1.0, radius=1.8)
                 rrt2.nodes = [drone_pos.copy()]; rrt2.parent={0:None}; rrt2.cost={0:0.0}
                 new_path = rrt2.build()
                 if new_path:
@@ -1513,15 +1565,16 @@ def run_engine():
             grid_new = get_grid(dyn_cur)
             dstar.update_grid(grid_new, w2v(drone_pos))
             dstar.compute(max_iter=5000)
-            dstar_wp = dstar.extract_path()
-            # Blend D* hint into waypoints
-            if dstar_wp and len(dstar_wp) > 1:
-                active_path = dstar_wp
-                did_dstar_rp = True
+            if blocked:
+                dstar_wp = dstar.extract_path()
+                # Blend D* hint into waypoints only if we need to dodge
+                if dstar_wp and len(dstar_wp) > 1:
+                    active_path = dstar_wp
+                    did_dstar_rp = True
 
         # ── Follow active path ───────────────────────
         if not active_path:
-            active_path = [GOAL.copy()]
+            active_path = [current_target.copy()]
 
         # Skip waypoints already passed
         while len(active_path)>1 and np.linalg.norm(drone_pos-np.array(active_path[0]))<0.35:
@@ -1537,10 +1590,10 @@ def run_engine():
         # When any obstacle is within 2.5m, engage DWA+MPC for predictive avoidance
         if min_d < 2.5:
             # DWA: samples velocity space with predicted obstacle positions
-            dwa_vel = dwa_planner.compute(drone_pos, drone_vel, GOAL,
+            dwa_vel = dwa_planner.compute(drone_pos, drone_vel, current_target,
                                           dwa_pred, STATIC_OBSTACLES)
             # MPC: optimises N-step trajectory over predicted future
-            mpc_vel = mpc_planner.optimize(drone_pos, drone_vel, GOAL,
+            mpc_vel = mpc_planner.optimize(drone_pos, drone_vel, current_target,
                                            mpc_pred, STATIC_OBSTACLES)
             # Blend: 40% PID direction + 30% DWA + 30% MPC
             # (PID keeps goal-seeking, DWA/MPC ensure obstacle clearance)
@@ -1628,9 +1681,10 @@ def run_engine():
         history['min_dist'].append(min_d)
         history['pot_force'].append(pf_force.copy())
         history['metrics'].append(metrics.score())
+        history['target'].append(current_target.copy())
 
-        if np.linalg.norm(drone_pos-GOAL) < 0.45:
-            print(f"\n✅ GOAL REACHED at step {step} (t={t:.1f}s)")
+        if np.linalg.norm(drone_pos-MISSION_WAYPOINTS[-1]) < 0.45:
+            print(f"\n✅ FINAL MISSION GOAL REACHED at step {step} (t={t:.1f}s)")
             break
 
     # Signal done
@@ -1721,7 +1775,9 @@ def launch_animation(history):
     ax3d.plot(rp[:,0], rp[:,1], rp[:,2], '-', c='#AB47BC', lw=2.0, alpha=0.7, label='Informed RRT*')
 
     ax3d.scatter(*START, s=100, c='#00E5FF', marker='o', zorder=6, label='Start')
-    ax3d.scatter(*GOAL,  s=150, c='#FFD600', marker='*', zorder=6, label='Goal')
+    for i, wp in enumerate(MISSION_WAYPOINTS[:-1]):
+        ax3d.scatter(*wp, s=120, c='#FF9800', marker='^', zorder=6, label=f'WP {i+1}')
+    ax3d.scatter(*MISSION_WAYPOINTS[-1],  s=150, c='#FFD600', marker='*', zorder=6, label='Final Goal')
 
     traj3d, = ax3d.plot([], [], [], '-', c='#42A5F5', lw=2, label='Drone Traj')
     plan3d, = ax3d.plot([], [], [], '--', c='#FFF176', lw=2.5, label='Active D*/RRT')
@@ -1822,7 +1878,9 @@ def launch_animation(history):
         pf_dir = pf_f/pf_n * scale
         pf_arrow.xy      = (pf_dir[0], pf_dir[1])
         pf_arrow.xytext  = (0, 0)
-        att_dir = (GOAL-pos); att_n=np.linalg.norm(att_dir)+1e-9
+        
+        cur_tag = history['target'][i] if 'target' in history else MISSION_WAYPOINTS[-1]
+        att_dir = (cur_tag-pos); att_n=np.linalg.norm(att_dir)+1e-9
         att_dir = att_dir/att_n * 0.7
         pf_att_arrow.xy     = (att_dir[0], att_dir[1])
         pf_att_arrow.xytext = (0,0)
